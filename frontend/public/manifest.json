@@ -1,0 +1,9 @@
+{
+  "name": "Expense & Reminders",
+  "short_name": "Expenses",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#7c3aed",
+  "icons": []
+}
