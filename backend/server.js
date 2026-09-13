@@ -16,20 +16,24 @@ const dashboardRoutes = require("./routes/dashboardRoutes");
 
 const app = express();
 
-/* =========================
+/* =========================================================
    CORS CONFIGURATION
-========================= */
+========================================================= */
 
+// Add your actual Vercel production URL here if needed.
 const allowedOrigins = [
   "http://localhost:3001",
   "http://127.0.0.1:3001",
+
+  // Production frontend
+  // "https://your-app.vercel.app",
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
       // Allow requests without Origin
-      // Example: Postman / server-to-server
+      // Example: Postman / server-to-server / UptimeRobot
       if (!origin) {
         return callback(null, true);
       }
@@ -71,51 +75,81 @@ app.use(
   })
 );
 
-/* =========================
+/* =========================================================
    MIDDLEWARE
-========================= */
+========================================================= */
 
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(
+  express.json({
+    limit: "5mb",
+  })
+);
 
-/* =========================
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
+
+/* =========================================================
    HEALTH CHECK
-========================= */
+========================================================= */
+
+// Use this URL in UptimeRobot:
+//
+// https://expense-reminder-app.onrender.com/api/health
+//
+// It does NOT require login/authentication.
 
 app.get("/api/health", (req, res) => {
-  res.json({
+  res.status(200).json({
     ok: true,
     message: "Expense Reminder API is running",
+    timestamp: new Date().toISOString(),
   });
 });
 
-/* =========================
+/* =========================================================
    ROUTES
-========================= */
+========================================================= */
 
 app.use("/api/auth", authRoutes);
+
 app.use("/api/users", userRoutes);
+
 app.use("/api/expenses", expenseRoutes);
+
 app.use("/api/reminders", reminderRoutes);
+
 app.use("/api/push", pushRoutes);
+
 app.use("/api/dashboard", dashboardRoutes);
 
-/* =========================
+/* =========================================================
    ERROR HANDLING
-========================= */
+========================================================= */
 
 app.use(notFound);
+
 app.use(errorHandler);
 
-/* =========================
+/* =========================================================
    SERVER
-========================= */
+========================================================= */
 
 const PORT = process.env.PORT || 5001;
 
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    startReminderScheduler();
+connectDB()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+
+      // Start reminder scheduler
+      startReminderScheduler();
+    });
+  })
+  .catch((error) => {
+    console.error("❌ Database connection failed:", error);
+    process.exit(1);
   });
-});
+
