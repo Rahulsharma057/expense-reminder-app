@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -26,6 +25,7 @@ import NotificationsActiveRoundedIcon from "@mui/icons-material/NotificationsAct
 import PeopleRoundedIcon from "@mui/icons-material/PeopleRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
+import ChecklistRtlRoundedIcon from "@mui/icons-material/ChecklistRtlRounded";
 
 import { usePathname, useRouter } from "next/navigation";
 
@@ -58,6 +58,11 @@ export default function Navbar() {
       label: "Dashboard",
       href: "/dashboard",
       icon: <DashboardRoundedIcon />,
+    },
+    {
+      label: "Tasks",
+      href: "/tasks",
+      icon: <ChecklistRtlRoundedIcon />,
     },
     {
       label: "Expenses",

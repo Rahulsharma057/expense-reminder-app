@@ -17,11 +17,20 @@ const expenseSchema = new mongoose.Schema(
     },
     // Filled in only when mode === "Other" — e.g. "paid via Rahul's UPI"
     paidByOther: { type: String, default: "", trim: true },
-
-    billPhoto: {
-      url: { type: String, default: "" },
-      publicId: { type: String, default: "" },
+claimStatus: {
+      type: String,
+      enum: ["Not Claimed", "Claimed", "Received"],
+      default: "Not Claimed",
     },
+    expectedReturnDate: { type: Date, default: null }, // kab bola tha ki kab aayega
+    claimRemark: { type: String, default: "" },       
+    // Multiple bill/slip photos (max enforced in controller, not schema)
+    billPhotos: [
+      {
+        url: { type: String, required: true },
+        publicId: { type: String, required: true },
+      },
+    ],
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },

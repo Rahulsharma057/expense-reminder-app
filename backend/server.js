@@ -2,10 +2,12 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const http = require("http");
 
 const connectDB = require("./config/db");
 const startReminderScheduler = require("./reminderScheduler");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
+const { initSocket } = require("./utils/socket");
 
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -13,6 +15,7 @@ const expenseRoutes = require("./routes/expenseRoutes");
 const reminderRoutes = require("./routes/reminderRoutes");
 const pushRoutes = require("./routes/pushRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
 const app = express();
 
@@ -124,6 +127,10 @@ app.use("/api/reminders", reminderRoutes);
 app.use("/api/push", pushRoutes);
 
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/recipients", require("./routes/recipients"));
+
+// Task assignment + WhatsApp-style task chat (added)
+app.use("/api/tasks", taskRoutes);
 
 /* =========================================================
    ERROR HANDLING
@@ -135,13 +142,18 @@ app.use(errorHandler);
 
 /* =========================================================
    SERVER
+   Wrapped in a plain http server (instead of app.listen directly)
+   so Socket.io can attach to the same server for realtime task chat.
 ========================================================= */
 
 const PORT = process.env.PORT || 5001;
 
+const server = http.createServer(app);
+initSocket(server);
+
 connectDB()
   .then(() => {
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
 
       // Start reminder scheduler
@@ -152,4 +164,3 @@ connectDB()
     console.error("❌ Database connection failed:", error);
     process.exit(1);
   });
-
