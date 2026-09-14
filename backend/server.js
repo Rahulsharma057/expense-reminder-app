@@ -128,7 +128,7 @@ app.use("/api/push", pushRoutes);
 
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/recipients", require("./routes/recipients"));
-
+app.use("/api/udhaar", require("./routes/udhaarRoutes"));
 // Task assignment + WhatsApp-style task chat (added)
 app.use("/api/tasks", taskRoutes);
 

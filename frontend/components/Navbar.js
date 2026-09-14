@@ -69,10 +69,16 @@ export default function Navbar() {
       href: "/expenses",
       icon: <ReceiptLongRoundedIcon />,
     },
+  
     {
       label: "Reminders",
       href: "/reminders",
       icon: <NotificationsActiveRoundedIcon />,
+    },
+          {
+      label: "Udhaar Khata",
+      href: "/udhaar",
+      icon: <ChecklistRtlRoundedIcon />,
     },
   ];
 
