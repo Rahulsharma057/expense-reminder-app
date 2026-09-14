@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+
 import {
   Alert,
   Avatar,
@@ -33,13 +32,10 @@ import {
   AttachFile,
   Check,
   CheckCircle,
-  Close,
   Delete,
   Edit,
   Groups,
   Image as ImageIcon,
-  MoreVert,
-  Person,
   Refresh,
   Send,
   TaskAlt,
@@ -53,7 +49,7 @@ import Navbar from "../../components/Navbar";
 import api from "../../lib/api";
 
 /* =========================================================
-   HELPERS
+   CONSTANTS
 ========================================================= */
 
 const STATUS_OPTIONS = [
@@ -75,12 +71,12 @@ const MODE_OPTIONS = [
   {
     value: "INDIVIDUAL",
     label: "Individual",
-    description: "Assign task to one teacher",
+    description: "Assign task to one user",
   },
   {
     value: "SEPARATE",
     label: "Separate",
-    description: "Create separate task for each teacher",
+    description: "Create separate task for each user",
   },
   {
     value: "GROUP",
@@ -104,6 +100,10 @@ const RECURRENCE_OPTIONS = [
   },
 ];
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
 const getId = (value) => {
   if (!value) return "";
 
@@ -117,19 +117,23 @@ const getId = (value) => {
 const getUserName = (user) => {
   if (!user) return "User";
 
-  if (typeof user === "string") return user;
+  if (typeof user === "string") {
+    return user;
+  }
 
-  return user.name || user.username || user.email || "User";
+  return (
+    user.name ||
+    user.username ||
+    user.email ||
+    "User"
+  );
 };
 
 const getInitial = (user) => {
   const name = getUserName(user);
 
   return (
-    name
-      .trim()
-      .charAt(0)
-      .toUpperCase() || "U"
+    name.trim().charAt(0).toUpperCase() || "U"
   );
 };
 
@@ -154,7 +158,9 @@ const formatTime = (date) => {
 
   const d = new Date(date);
 
-  if (Number.isNaN(d.getTime())) return "";
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
 
   return d.toLocaleTimeString("en-IN", {
     hour: "2-digit",
@@ -175,8 +181,6 @@ const getErrorMessage = (error, fallback) => {
 ========================================================= */
 
 function TasksInner() {
-  const router = useRouter();
-
   const fileInputRef = useRef(null);
   const chatBottomRef = useRef(null);
 
@@ -188,19 +192,37 @@ function TasksInner() {
   const [loading, setLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(false);
 
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [taskLoading, setTaskLoading] = useState(false);
+  const [selectedTask, setSelectedTask] =
+    useState(null);
 
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [taskLoading, setTaskLoading] =
+    useState(false);
 
-  const [createOpen, setCreateOpen] = useState(false);
+  const [activeFilter, setActiveFilter] =
+    useState("all");
 
-  const [mode, setMode] = useState("INDIVIDUAL");
+  /* =======================================================
+     CREATE TASK STATES
+  ======================================================= */
+
+  const [createOpen, setCreateOpen] =
+    useState(false);
+
+  const [mode, setMode] =
+    useState("INDIVIDUAL");
+
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [assignedTo, setAssignedTo] = useState("");
-  const [assignedToList, setAssignedToList] = useState([]);
-  const [dueDate, setDueDate] = useState("");
+  const [description, setDescription] =
+    useState("");
+
+  const [assignedTo, setAssignedTo] =
+    useState("");
+
+  const [assignedToList, setAssignedToList] =
+    useState([]);
+
+  const [dueDate, setDueDate] =
+    useState("");
 
   const [recurrenceEnabled, setRecurrenceEnabled] =
     useState(false);
@@ -208,35 +230,52 @@ function TasksInner() {
   const [recurrenceFrequency, setRecurrenceFrequency] =
     useState("daily");
 
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] =
+    useState(false);
 
-  const [messageText, setMessageText] = useState("");
+  /* =======================================================
+     MESSAGE STATES
+  ======================================================= */
+
+  const [messageText, setMessageText] =
+    useState("");
+
   const [sendingMessage, setSendingMessage] =
     useState(false);
 
   const [editingMessage, setEditingMessage] =
     useState(null);
 
-  const [editText, setEditText] = useState("");
+  const [editText, setEditText] =
+    useState("");
+
+  /* =======================================================
+     DELETE
+  ======================================================= */
 
   const [deleteDialogOpen, setDeleteDialogOpen] =
     useState(false);
 
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting] =
+    useState(false);
 
   /* =======================================================
-     LOAD CURRENT USER
+     CURRENT USER
   ======================================================= */
 
   useEffect(() => {
     try {
-      const storedUser = localStorage.getItem("user");
+      const storedUser =
+        localStorage.getItem("user");
 
       if (storedUser) {
         setUser(JSON.parse(storedUser));
       }
     } catch (error) {
-      console.error("User parse error:", error);
+      console.error(
+        "User parse error:",
+        error
+      );
     }
   }, []);
 
@@ -248,18 +287,28 @@ function TasksInner() {
     try {
       setLoading(true);
 
-      const response = await api.get("/tasks/mine");
+      const response = await api.get(
+        "/tasks/mine"
+      );
 
-      const data = Array.isArray(response.data)
+      const data = Array.isArray(
+        response.data
+      )
         ? response.data
         : response.data?.tasks || [];
 
       setTasks(data);
     } catch (error) {
-      console.error("Load tasks error:", error);
+      console.error(
+        "Load tasks error:",
+        error
+      );
 
       toast.error(
-        getErrorMessage(error, "Could not load tasks")
+        getErrorMessage(
+          error,
+          "Could not load tasks"
+        )
       );
     } finally {
       setLoading(false);
@@ -271,43 +320,43 @@ function TasksInner() {
   }, []);
 
   /* =======================================================
-     LOAD USERS / TEACHERS
+     LOAD USERS / MEMBERS
   ======================================================= */
 
   const loadUsers = async () => {
     try {
       setUsersLoading(true);
 
-      const response = await api.get("/users");
-
-      const data =
-        Array.isArray(response.data)
-          ? response.data
-          : response.data?.users ||
-            response.data?.data ||
-            [];
-
-      const teacherUsers = data.filter((item) => {
-        const role = String(item?.role || "").toLowerCase();
-
-        return (
-          role === "teacher" ||
-          role === "admin" ||
-          role === "principal" ||
-          role === "superadmin"
-        );
-      });
-
-      setUsers(
-        teacherUsers.length ? teacherUsers : data
+      const response = await api.get(
+        "/users"
       );
+
+      const data = Array.isArray(
+        response.data
+      )
+        ? response.data
+        : response.data?.users ||
+          response.data?.data ||
+          [];
+
+      const activeMembers = data.filter(
+        (item) =>
+          item?.isActive !== false &&
+          String(item?.role || "").toLowerCase() ===
+            "member"
+      );
+
+      setUsers(activeMembers);
     } catch (error) {
-      console.error("Load users error:", error);
+      console.error(
+        "Load users error:",
+        error
+      );
 
       toast.error(
         getErrorMessage(
           error,
-          "Could not load teachers"
+          "Could not load users"
         )
       );
     } finally {
@@ -320,7 +369,7 @@ function TasksInner() {
   }, []);
 
   /* =======================================================
-     SELECTED TASK
+     OPEN TASK
   ======================================================= */
 
   const openTask = async (task) => {
@@ -333,10 +382,16 @@ function TasksInner() {
 
       setSelectedTask(response.data);
 
-      // Mark messages as seen
-      await api.patch(
-        `/tasks/${task._id}/messages/seen`
-      );
+      try {
+        await api.patch(
+          `/tasks/${task._id}/messages/seen`
+        );
+      } catch (seenError) {
+        console.error(
+          "Mark messages seen error:",
+          seenError
+        );
+      }
 
       setTimeout(() => {
         chatBottomRef.current?.scrollIntoView({
@@ -344,7 +399,10 @@ function TasksInner() {
         });
       }, 100);
     } catch (error) {
-      console.error("Open task error:", error);
+      console.error(
+        "Open task error:",
+        error
+      );
 
       toast.error(
         getErrorMessage(
@@ -358,6 +416,18 @@ function TasksInner() {
   };
 
   /* =======================================================
+     CLOSE TASK / MOBILE BACK
+  ======================================================= */
+
+  const closeTask = () => {
+    setSelectedTask(null);
+    setEditingMessage(null);
+    setEditText("");
+    setMessageText("");
+    setDeleteDialogOpen(false);
+  };
+
+  /* =======================================================
      FILTER
   ======================================================= */
 
@@ -367,7 +437,8 @@ function TasksInner() {
     }
 
     return tasks.filter(
-      (task) => task.status === activeFilter
+      (task) =>
+        task.status === activeFilter
     );
   }, [tasks, activeFilter]);
 
@@ -380,15 +451,18 @@ function TasksInner() {
       all: tasks.length,
 
       pending: tasks.filter(
-        (task) => task.status === "pending"
+        (task) =>
+          task.status === "pending"
       ).length,
 
       inProgress: tasks.filter(
-        (task) => task.status === "in-progress"
+        (task) =>
+          task.status === "in-progress"
       ).length,
 
       completed: tasks.filter(
-        (task) => task.status === "completed"
+        (task) =>
+          task.status === "completed"
       ).length,
     };
   }, [tasks]);
@@ -414,21 +488,29 @@ function TasksInner() {
 
   const handleCreateTask = async () => {
     if (!title.trim()) {
-      toast.error("Task title is required");
-      return;
-    }
-
-    if (mode === "INDIVIDUAL" && !assignedTo) {
-      toast.error("Please select a teacher");
+      toast.error(
+        "Task title is required"
+      );
       return;
     }
 
     if (
-      (mode === "SEPARATE" || mode === "GROUP") &&
+      mode === "INDIVIDUAL" &&
+      !assignedTo
+    ) {
+      toast.error(
+        "Please select a user"
+      );
+      return;
+    }
+
+    if (
+      (mode === "SEPARATE" ||
+        mode === "GROUP") &&
       assignedToList.length < 2
     ) {
       toast.error(
-        "Please select at least two teachers"
+        "Please select at least two users"
       );
       return;
     }
@@ -451,9 +533,11 @@ function TasksInner() {
       };
 
       if (mode === "INDIVIDUAL") {
-        payload.assignedTo = assignedTo;
+        payload.assignedTo =
+          assignedTo;
       } else {
-        payload.assignedToList = assignedToList;
+        payload.assignedToList =
+          assignedToList;
       }
 
       const response = await api.post(
@@ -461,26 +545,33 @@ function TasksInner() {
         payload
       );
 
-      toast.success("Task created successfully");
+      toast.success(
+        "Task created successfully"
+      );
 
       setCreateOpen(false);
       resetCreateForm();
 
       await loadTasks();
 
-      // Open newly created individual/group task
       if (
         mode === "INDIVIDUAL" ||
         mode === "GROUP"
       ) {
-        const createdTask = response.data;
+        const createdTask =
+          response.data;
 
         if (createdTask?._id) {
-          setSelectedTask(createdTask);
+          setSelectedTask(
+            createdTask
+          );
         }
       }
     } catch (error) {
-      console.error("Create task error:", error);
+      console.error(
+        "Create task error:",
+        error
+      );
 
       toast.error(
         getErrorMessage(
@@ -494,24 +585,33 @@ function TasksInner() {
   };
 
   /* =======================================================
-     STATUS UPDATE
+     UPDATE STATUS
   ======================================================= */
 
-  const updateTaskStatus = async (taskId, status) => {
+  const updateTaskStatus = async (
+    taskId,
+    status
+  ) => {
     try {
       const response = await api.patch(
         `/tasks/${taskId}/status`,
         { status }
       );
 
-      toast.success("Task status updated");
+      toast.success(
+        "Task status updated"
+      );
+
+      const updatedTask =
+        response.data?.task ||
+        response.data;
 
       setTasks((previous) =>
         previous.map((task) =>
           task._id === taskId
             ? {
                 ...task,
-                ...response.data,
+                ...updatedTask,
               }
             : task
         )
@@ -521,12 +621,15 @@ function TasksInner() {
         previous?._id === taskId
           ? {
               ...previous,
-              ...response.data,
+              ...updatedTask,
             }
           : previous
       );
     } catch (error) {
-      console.error("Status update error:", error);
+      console.error(
+        "Status update error:",
+        error
+      );
 
       toast.error(
         getErrorMessage(
@@ -538,13 +641,17 @@ function TasksInner() {
   };
 
   /* =======================================================
-     SEND TEXT MESSAGE
+     SEND MESSAGE
   ======================================================= */
 
   const sendMessage = async () => {
-    if (!selectedTask?._id) return;
+    if (!selectedTask?._id) {
+      return;
+    }
 
-    if (!messageText.trim()) return;
+    if (!messageText.trim()) {
+      return;
+    }
 
     try {
       setSendingMessage(true);
@@ -572,7 +679,10 @@ function TasksInner() {
         });
       }, 50);
     } catch (error) {
-      console.error("Send message error:", error);
+      console.error(
+        "Send message error:",
+        error
+      );
 
       toast.error(
         getErrorMessage(
@@ -590,21 +700,34 @@ function TasksInner() {
   ======================================================= */
 
   const sendPhoto = async (event) => {
-    const file = event.target.files?.[0];
+    const file =
+      event.target.files?.[0];
 
     event.target.value = "";
 
-    if (!file || !selectedTask?._id) {
+    if (
+      !file ||
+      !selectedTask?._id
+    ) {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image");
+    if (
+      !file.type.startsWith("image/")
+    ) {
+      toast.error(
+        "Please select an image"
+      );
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be smaller than 5MB");
+    if (
+      file.size >
+      5 * 1024 * 1024
+    ) {
+      toast.error(
+        "Image must be smaller than 5MB"
+      );
       return;
     }
 
@@ -613,7 +736,10 @@ function TasksInner() {
 
       const formData = new FormData();
 
-      formData.append("photo", file);
+      formData.append(
+        "photo",
+        file
+      );
 
       if (messageText.trim()) {
         formData.append(
@@ -622,15 +748,17 @@ function TasksInner() {
         );
       }
 
-      const response = await api.post(
-        `/tasks/${selectedTask._id}/messages/photo`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      const response =
+        await api.post(
+          `/tasks/${selectedTask._id}/messages/photo`,
+          formData,
+          {
+            headers: {
+              "Content-Type":
+                "multipart/form-data",
+            },
+          }
+        );
 
       setSelectedTask((previous) => ({
         ...previous,
@@ -642,7 +770,9 @@ function TasksInner() {
 
       setMessageText("");
 
-      toast.success("Photo sent");
+      toast.success(
+        "Photo sent"
+      );
 
       setTimeout(() => {
         chatBottomRef.current?.scrollIntoView({
@@ -650,7 +780,10 @@ function TasksInner() {
         });
       }, 50);
     } catch (error) {
-      console.error("Photo message error:", error);
+      console.error(
+        "Photo message error:",
+        error
+      );
 
       toast.error(
         getErrorMessage(
@@ -667,9 +800,13 @@ function TasksInner() {
      EDIT MESSAGE
   ======================================================= */
 
-  const startEditMessage = (message) => {
+  const startEditMessage = (
+    message
+  ) => {
     setEditingMessage(message);
-    setEditText(message.text || "");
+    setEditText(
+      message.text || ""
+    );
   };
 
   const cancelEditMessage = () => {
@@ -678,36 +815,51 @@ function TasksInner() {
   };
 
   const saveEditedMessage = async () => {
-    if (!editingMessage?._id) return;
+    if (!editingMessage?._id) {
+      return;
+    }
 
     if (!editText.trim()) {
-      toast.error("Message cannot be empty");
+      toast.error(
+        "Message cannot be empty"
+      );
       return;
     }
 
     try {
-      const response = await api.patch(
-        `/tasks/${selectedTask._id}/messages/${editingMessage._id}`,
-        {
-          text: editText.trim(),
-        }
+      const response =
+        await api.patch(
+          `/tasks/${selectedTask._id}/messages/${editingMessage._id}`,
+          {
+            text: editText.trim(),
+          }
+        );
+
+      setSelectedTask(
+        (previous) => ({
+          ...previous,
+
+          messages:
+            previous.messages.map(
+              (message) =>
+                message._id ===
+                editingMessage._id
+                  ? response.data
+                  : message
+            ),
+        })
       );
 
-      setSelectedTask((previous) => ({
-        ...previous,
-        messages: previous.messages.map(
-          (message) =>
-            message._id === editingMessage._id
-              ? response.data
-              : message
-        ),
-      }));
-
-      toast.success("Message updated");
+      toast.success(
+        "Message updated"
+      );
 
       cancelEditMessage();
     } catch (error) {
-      console.error("Edit message error:", error);
+      console.error(
+        "Edit message error:",
+        error
+      );
 
       toast.error(
         getErrorMessage(
@@ -722,46 +874,72 @@ function TasksInner() {
      DELETE TASK
   ======================================================= */
 
-  const deleteCurrentTask = async () => {
-    if (!selectedTask?._id) return;
+  const deleteCurrentTask =
+    async () => {
+      if (!selectedTask?._id) {
+        return;
+      }
 
-    try {
-      setDeleting(true);
+      try {
+        setDeleting(true);
 
-      await api.delete(
-        `/tasks/${selectedTask._id}`
-      );
+        await api.delete(
+          `/tasks/${selectedTask._id}`
+        );
 
-      toast.success("Task deleted successfully");
+        toast.success(
+          "Task deleted successfully"
+        );
 
-      setTasks((previous) =>
-        previous.filter(
-          (task) =>
-            task._id !== selectedTask._id
-        )
-      );
+        setTasks((previous) =>
+          previous.filter(
+            (task) =>
+              task._id !==
+              selectedTask._id
+          )
+        );
 
-      setSelectedTask(null);
-      setDeleteDialogOpen(false);
-    } catch (error) {
-      console.error("Delete task error:", error);
+        closeTask();
+      } catch (error) {
+        console.error(
+          "Delete task error:",
+          error
+        );
 
-      toast.error(
-        getErrorMessage(
-          error,
-          "Could not delete task"
-        )
-      );
-    } finally {
-      setDeleting(false);
+        toast.error(
+          getErrorMessage(
+            error,
+            "Could not delete task"
+          )
+        );
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+  /* =======================================================
+     PARTICIPANTS
+  ======================================================= */
+
+  const getParticipants = (
+    task
+  ) => {
+    if (task?.mode === "GROUP") {
+      return task.participants || [];
     }
+
+    return task?.assignedTo
+      ? [task.assignedTo]
+      : [];
   };
 
   /* =======================================================
-     STATUS UI
+     STATUS CHIP
   ======================================================= */
 
-  const getStatusChip = (status) => {
+  const getStatusChip = (
+    status
+  ) => {
     if (status === "completed") {
       return (
         <Chip
@@ -776,7 +954,9 @@ function TasksInner() {
       );
     }
 
-    if (status === "in-progress") {
+    if (
+      status === "in-progress"
+    ) {
       return (
         <Chip
           size="small"
@@ -804,21 +984,7 @@ function TasksInner() {
   };
 
   /* =======================================================
-     TASK PARTICIPANTS
-  ======================================================= */
-
-  const getParticipants = (task) => {
-    if (task?.mode === "GROUP") {
-      return task.participants || [];
-    }
-
-    return task?.assignedTo
-      ? [task.assignedTo]
-      : [];
-  };
-
-  /* =======================================================
-     RENDER
+     JSX
   ======================================================= */
 
   return (
@@ -828,28 +994,54 @@ function TasksInner() {
         bgcolor: "#FAF9FF",
         background:
           "linear-gradient(180deg, #FAF9FF 0%, #FFFFFF 55%)",
+        overflowX: "hidden",
       }}
     >
-      <Navbar />
+      {/* =================================================
+          NAVBAR
+      ================================================= */}
+
+      <Box
+        sx={{
+          display: {
+            xs: selectedTask
+              ? "none"
+              : "block",
+            md: "block",
+          },
+        }}
+      >
+        <Navbar />
+      </Box>
+
+      {/* =================================================
+          PAGE CONTAINER
+      ================================================= */}
 
       <Box
         sx={{
           maxWidth: 1500,
           mx: "auto",
+
           px: {
-            xs: 1.5,
+            xs: selectedTask
+              ? 0
+              : 1.5,
             sm: 2.5,
             md: 3,
           },
+
           py: {
-            xs: 2,
+            xs: selectedTask
+              ? 0
+              : 2,
             sm: 2.5,
             md: 3,
           },
         }}
       >
         {/* =================================================
-            HEADER
+            PAGE HEADER
         ================================================= */}
 
         <Stack
@@ -863,7 +1055,16 @@ function TasksInner() {
             sm: "center",
           }}
           spacing={2}
-          sx={{ mb: 2.5 }}
+          sx={{
+            mb: 2.5,
+
+            display: {
+              xs: selectedTask
+                ? "none"
+                : "flex",
+              md: "flex",
+            },
+          }}
         >
           <Box>
             <Typography
@@ -887,7 +1088,8 @@ function TasksInner() {
                 fontSize: 13.5,
               }}
             >
-              Assign, track and discuss your tasks
+              Assign, track and discuss
+              your tasks
             </Typography>
           </Box>
 
@@ -930,7 +1132,8 @@ function TasksInner() {
                 minHeight: 42,
                 borderRadius: 2.5,
                 px: 2,
-                textTransform: "none",
+                textTransform:
+                  "none",
                 fontWeight: 700,
                 bgcolor: "#7C3AED",
                 boxShadow:
@@ -955,8 +1158,16 @@ function TasksInner() {
             p: 1,
             mb: 2,
             borderRadius: 3,
-            border: "1px solid #ECE8F5",
+            border:
+              "1px solid #ECE8F5",
             bgcolor: "#fff",
+
+            display: {
+              xs: selectedTask
+                ? "none"
+                : "block",
+              md: "block",
+            },
           }}
         >
           <Stack
@@ -964,9 +1175,11 @@ function TasksInner() {
             spacing={0.8}
             sx={{
               overflowX: "auto",
-              "&::-webkit-scrollbar": {
-                display: "none",
-              },
+
+              "&::-webkit-scrollbar":
+                {
+                  display: "none",
+                },
             }}
           >
             {[
@@ -983,18 +1196,22 @@ function TasksInner() {
               {
                 key: "in-progress",
                 label: "In Progress",
-                count: counts.inProgress,
+                count:
+                  counts.inProgress,
               },
               {
                 key: "completed",
                 label: "Completed",
-                count: counts.completed,
+                count:
+                  counts.completed,
               },
             ].map((filter) => (
               <Button
                 key={filter.key}
                 onClick={() =>
-                  setActiveFilter(filter.key)
+                  setActiveFilter(
+                    filter.key
+                  )
                 }
                 sx={{
                   flexShrink: 0,
@@ -1002,19 +1219,24 @@ function TasksInner() {
                   borderRadius: 2,
                   px: 1.6,
                   py: 0.9,
-                  textTransform: "none",
+                  textTransform:
+                    "none",
                   fontWeight: 700,
                   color:
-                    activeFilter === filter.key
+                    activeFilter ===
+                    filter.key
                       ? "#fff"
                       : "#686176",
                   bgcolor:
-                    activeFilter === filter.key
+                    activeFilter ===
+                    filter.key
                       ? "#7C3AED"
                       : "transparent",
+
                   "&:hover": {
                     bgcolor:
-                      activeFilter === filter.key
+                      activeFilter ===
+                      filter.key
                         ? "#6D28D9"
                         : "#F5F2FA",
                   },
@@ -1030,12 +1252,16 @@ function TasksInner() {
                     height: 21,
                     px: 0.5,
                     borderRadius: 10,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    display:
+                      "inline-flex",
+                    alignItems:
+                      "center",
+                    justifyContent:
+                      "center",
                     fontSize: 11,
                     bgcolor:
-                      activeFilter === filter.key
+                      activeFilter ===
+                      filter.key
                         ? "rgba(255,255,255,.18)"
                         : "#F1EDF8",
                   }}
@@ -1048,20 +1274,35 @@ function TasksInner() {
         </Paper>
 
         {/* =================================================
-            MAIN CONTENT
+            MAIN GRID
         ================================================= */}
 
         <Box
           sx={{
             display: "grid",
+
             gridTemplateColumns: {
               xs: "1fr",
               md: selectedTask
                 ? "minmax(320px, 430px) minmax(0, 1fr)"
                 : "1fr",
             },
-            gap: 2,
+
+            gap: {
+              xs: 0,
+              md: 2,
+            },
+
             alignItems: "stretch",
+
+            position: "relative",
+
+            minHeight: {
+              xs: selectedTask
+                ? "100dvh"
+                : "calc(100dvh - 155px)",
+              md: 650,
+            },
           }}
         >
           {/* =================================================
@@ -1071,13 +1312,37 @@ function TasksInner() {
           <Paper
             elevation={0}
             sx={{
-              borderRadius: 3,
-              border: "1px solid #ECE8F5",
+              display: {
+                xs: selectedTask
+                  ? "none"
+                  : "flex",
+                md: "flex",
+              },
+
+              flexDirection:
+                "column",
+
+              borderRadius: {
+                xs: 0,
+                md: 3,
+              },
+
+              border: {
+                xs: "none",
+                md: "1px solid #ECE8F5",
+              },
+
               bgcolor: "#fff",
               overflow: "hidden",
+
               minHeight: {
-                xs: 500,
+                xs: "calc(100dvh - 155px)",
                 md: 650,
+              },
+
+              height: {
+                xs: "calc(100dvh - 155px)",
+                md: "auto",
               },
             }}
           >
@@ -1105,8 +1370,10 @@ function TasksInner() {
                   mt: 0.3,
                 }}
               >
-                {filteredTasks.length} task
-                {filteredTasks.length !== 1
+                {filteredTasks.length}{" "}
+                task
+                {filteredTasks.length !==
+                1
                   ? "s"
                   : ""}
               </Typography>
@@ -1137,7 +1404,8 @@ function TasksInner() {
                   Loading tasks...
                 </Typography>
               </Stack>
-            ) : filteredTasks.length === 0 ? (
+            ) : filteredTasks.length ===
+              0 ? (
               <Stack
                 alignItems="center"
                 justifyContent="center"
@@ -1176,214 +1444,381 @@ function TasksInner() {
                     maxWidth: 300,
                   }}
                 >
-                  Create a task or change the
-                  selected filter.
+                  Create a task or
+                  change the selected
+                  filter.
                 </Typography>
               </Stack>
             ) : (
               <Stack
+                sx={{
+                  overflowY: "auto",
+                  flex: 1,
+
+                  "&::-webkit-scrollbar":
+                    {
+                      width: 5,
+                    },
+
+                  "&::-webkit-scrollbar-thumb":
+                    {
+                      background:
+                        "#DDD7E8",
+                      borderRadius: 10,
+                    },
+                }}
                 divider={
                   <Divider
                     sx={{
-                      borderColor: "#F2EFF6",
+                      borderColor:
+                        "#F2EFF6",
                     }}
                   />
                 }
               >
-                {filteredTasks.map((task) => {
-                  const isSelected =
-                    selectedTask?._id === task._id;
+                {filteredTasks.map(
+                  (task) => {
+                    const isSelected =
+                      selectedTask?._id ===
+                      task._id;
 
-                  const participants =
-                    getParticipants(task);
+                    const participants =
+                      getParticipants(
+                        task
+                      );
 
-                  return (
-                    <Box
-                      key={task._id}
-                      onClick={() => openTask(task)}
-                      sx={{
-                        p: 1.7,
-                        cursor: "pointer",
-                        bgcolor: isSelected
-                          ? "#F7F3FF"
-                          : "#fff",
-                        transition: "0.18s",
-                        "&:hover": {
-                          bgcolor: "#FAF8FE",
-                        },
-                      }}
-                    >
-                      <Stack
-                        direction="row"
-                        spacing={1.2}
-                        alignItems="flex-start"
+                    return (
+                      <Box
+                        key={task._id}
+                        onClick={() =>
+                          openTask(task)
+                        }
+                        sx={{
+                          p: 1.7,
+                          cursor:
+                            "pointer",
+
+                          bgcolor:
+                            isSelected
+                              ? "#F7F3FF"
+                              : "#fff",
+
+                          transition:
+                            "0.18s",
+
+                          "&:hover": {
+                            bgcolor:
+                              "#FAF8FE",
+                          },
+                        }}
                       >
-                        <Avatar
-                          sx={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 2.2,
-                            bgcolor: "#EEE7FF",
-                            color: "#6D28D9",
-                          }}
+                        <Stack
+                          direction="row"
+                          spacing={1.2}
+                          alignItems="flex-start"
                         >
-                          {task.mode ===
-                          "GROUP" ? (
-                            <Groups fontSize="small" />
-                          ) : (
-                            <TaskAlt fontSize="small" />
-                          )}
-                        </Avatar>
+                          {/* TASK ICON */}
 
-                        <Box
-                          sx={{
-                            minWidth: 0,
-                            flex: 1,
-                          }}
-                        >
-                          <Stack
-                            direction="row"
-                            alignItems="flex-start"
-                            justifyContent="space-between"
-                            spacing={1}
-                          >
-                            <Typography
-                              sx={{
-                                fontWeight: 800,
-                                fontSize: 14,
-                                color: "#27212F",
-                                overflow: "hidden",
-                                textOverflow:
-                                  "ellipsis",
-                                whiteSpace:
-                                  "nowrap",
-                              }}
-                            >
-                              {task.title}
-                            </Typography>
-
-                            {getStatusChip(
-                              task.status
-                            )}
-                          </Stack>
-
-                          {task.description && (
-                            <Typography
-                              sx={{
-                                mt: 0.5,
-                                color: "#858093",
-                                fontSize: 12,
-                                display:
-                                  "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient:
-                                  "vertical",
-                                overflow: "hidden",
-                              }}
-                            >
-                              {task.description}
-                            </Typography>
-                          )}
-
-                          <Stack
-                            direction="row"
-                            spacing={0.7}
-                            alignItems="center"
+                          <Avatar
                             sx={{
-                              mt: 1,
-                              flexWrap: "wrap",
+                              width: 40,
+                              height: 40,
+                              borderRadius:
+                                2.2,
+                              bgcolor:
+                                "#EEE7FF",
+                              color:
+                                "#6D28D9",
                             }}
                           >
-                            <Chip
-                              size="small"
-                              label={
-                                task.mode
-                              }
-                              sx={{
-                                height: 23,
-                                fontSize: 10,
-                                fontWeight: 700,
-                                borderRadius: 1.5,
-                                bgcolor:
-                                  "#F5F1FB",
-                              }}
-                            />
-
-                            {task.dueDate && (
-                              <Chip
-                                size="small"
-                                label={`Due ${formatDate(
-                                  task.dueDate
-                                )}`}
-                                sx={{
-                                  height: 23,
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  borderRadius: 1.5,
-                                }}
-                              />
+                            {task.mode ===
+                            "GROUP" ? (
+                              <Groups fontSize="small" />
+                            ) : (
+                              <TaskAlt fontSize="small" />
                             )}
+                          </Avatar>
 
-                            {participants.length >
-                              0 && (
-                              <Typography
+                          {/* TASK CONTENT */}
+
+                          <Box
+                            sx={{
+                              minWidth: 0,
+                              flex: 1,
+                            }}
+                          >
+                            <Stack
+                              direction="row"
+                              alignItems="flex-start"
+                              justifyContent="space-between"
+                              spacing={1}
+                            >
+                              <Box
                                 sx={{
-                                  fontSize: 10.5,
-                                  color:
-                                    "#938DA0",
+                                  minWidth: 0,
+                                  flex: 1,
                                 }}
                               >
-                                {participants.length}{" "}
-                                participant
-                                {participants.length >
-                                1
-                                  ? "s"
-                                  : ""}
+                                {/* TASK TITLE */}
+
+                                <Typography
+                                  sx={{
+                                    fontWeight:
+                                      800,
+                                    fontSize: 14,
+                                    color:
+                                      "#27212F",
+                                    overflow:
+                                      "hidden",
+                                    textOverflow:
+                                      "ellipsis",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  {task.title}
+                                </Typography>
+
+                                {/* ASSIGNED USER NAME */}
+
+                                <Typography
+                                  sx={{
+                                    mt: 0.35,
+                                    fontSize:
+                                      11.5,
+                                    fontWeight:
+                                      600,
+                                    color:
+                                      "#6D28D9",
+                                    overflow:
+                                      "hidden",
+                                    textOverflow:
+                                      "ellipsis",
+                                    whiteSpace:
+                                      "nowrap",
+                                  }}
+                                >
+                                  {task.mode ===
+                                  "GROUP"
+                                    ? `${
+                                        participants.length
+                                      } users`
+                                    : `Assigned to: ${getUserName(
+                                        task.assignedTo
+                                      )}`}
+                                </Typography>
+                              </Box>
+
+                              {getStatusChip(
+                                task.status
+                              )}
+                            </Stack>
+
+                            {/* DESCRIPTION */}
+
+                            {task.description && (
+                              <Typography
+                                sx={{
+                                  mt: 0.5,
+                                  color:
+                                    "#858093",
+                                  fontSize:
+                                    12,
+                                  display:
+                                    "-webkit-box",
+                                  WebkitLineClamp:
+                                    2,
+                                  WebkitBoxOrient:
+                                    "vertical",
+                                  overflow:
+                                    "hidden",
+                                }}
+                              >
+                                {
+                                  task.description
+                                }
                               </Typography>
                             )}
-                          </Stack>
-                        </Box>
-                      </Stack>
-                    </Box>
-                  );
-                })}
+
+                            {/* META */}
+
+                            <Stack
+                              direction="row"
+                              spacing={0.7}
+                              alignItems="center"
+                              sx={{
+                                mt: 1,
+                                flexWrap:
+                                  "wrap",
+                              }}
+                            >
+                              <Chip
+                                size="small"
+                                label={
+                                  task.mode
+                                }
+                                sx={{
+                                  height: 23,
+                                  fontSize:
+                                    10,
+                                  fontWeight:
+                                    700,
+                                  borderRadius:
+                                    1.5,
+                                  bgcolor:
+                                    "#F5F1FB",
+                                }}
+                              />
+
+                              {task.dueDate && (
+                                <Chip
+                                  size="small"
+                                  label={`Due ${formatDate(
+                                    task.dueDate
+                                  )}`}
+                                  sx={{
+                                    height: 23,
+                                    fontSize:
+                                      10,
+                                    fontWeight:
+                                      600,
+                                    borderRadius:
+                                      1.5,
+                                  }}
+                                />
+                              )}
+
+                              {task.mode ===
+                                "GROUP" &&
+                                participants.length >
+                                  0 && (
+                                  <Typography
+                                    sx={{
+                                      fontSize:
+                                        10.5,
+                                      color:
+                                        "#938DA0",
+                                    }}
+                                  >
+                                    {
+                                      participants.length
+                                    }{" "}
+                                    participant
+                                    {participants.length >
+                                    1
+                                      ? "s"
+                                      : ""}
+                                  </Typography>
+                                )}
+                            </Stack>
+                          </Box>
+                        </Stack>
+                      </Box>
+                    );
+                  }
+                )}
               </Stack>
             )}
           </Paper>
 
           {/* =================================================
-              TASK CHAT / DETAILS
+              CHAT
           ================================================= */}
 
           {selectedTask && (
             <Paper
               elevation={0}
               sx={{
-                borderRadius: 3,
-                border:
-                  "1px solid #ECE8F5",
-                bgcolor: "#fff",
-                minHeight: {
-                  xs: 650,
+                display: "flex",
+                flexDirection:
+                  "column",
+
+                position: {
+                  xs: "fixed",
+                  md: "relative",
+                },
+
+                top: {
+                  xs: 0,
+                  md: "auto",
+                },
+
+                left: {
+                  xs: 0,
+                  md: "auto",
+                },
+
+                right: {
+                  xs: 0,
+                  md: "auto",
+                },
+
+                bottom: {
+                  xs: 0,
+                  md: "auto",
+                },
+
+                width: {
+                  xs: "100%",
+                  md: "auto",
+                },
+
+                height: {
+                  xs: "100dvh",
                   md: 650,
                 },
+
+                minHeight: {
+                  xs: "100dvh",
+                  md: 650,
+                },
+
+                zIndex: {
+                  xs: 1300,
+                  md: "auto",
+                },
+
+                borderRadius: {
+                  xs: 0,
+                  md: 3,
+                },
+
+                border: {
+                  xs: "none",
+                  md: "1px solid #ECE8F5",
+                },
+
+                bgcolor: "#fff",
                 overflow: "hidden",
-                display: "flex",
-                flexDirection: "column",
               }}
             >
-              {/* CHAT HEADER */}
+              {/* =================================================
+                  CHAT HEADER
+              ================================================= */}
 
               <Box
                 sx={{
                   px: {
-                    xs: 1.5,
+                    xs: 1,
                     sm: 2,
                   },
-                  py: 1.5,
+
+                  py: {
+                    xs: 0.9,
+                    sm: 1.5,
+                  },
+
                   borderBottom:
                     "1px solid #EEEAF4",
+
                   bgcolor: "#fff",
+
+                  flexShrink: 0,
+
+                  position:
+                    "relative",
+
+                  zIndex: 2,
                 }}
               >
                 <Stack
@@ -1391,27 +1826,40 @@ function TasksInner() {
                   alignItems="center"
                   spacing={1}
                 >
+                  {/* MOBILE BACK */}
+
                   <IconButton
-                    onClick={() =>
-                      setSelectedTask(null)
+                    onClick={
+                      closeTask
                     }
                     sx={{
                       display: {
                         xs: "flex",
                         md: "none",
                       },
+
+                      width: 40,
+                      height: 40,
+                      mr: 0.2,
+                      color:
+                        "#332D3A",
                     }}
                   >
                     <ArrowBack />
                   </IconButton>
 
+                  {/* TASK AVATAR */}
+
                   <Avatar
                     sx={{
                       width: 42,
                       height: 42,
-                      borderRadius: 2.2,
-                      bgcolor: "#EEE7FF",
-                      color: "#6D28D9",
+                      borderRadius:
+                        2.2,
+                      bgcolor:
+                        "#EEE7FF",
+                      color:
+                        "#6D28D9",
                     }}
                   >
                     {selectedTask.mode ===
@@ -1422,6 +1870,8 @@ function TasksInner() {
                     )}
                   </Avatar>
 
+                  {/* CHAT TITLE */}
+
                   <Box
                     sx={{
                       flex: 1,
@@ -1430,85 +1880,123 @@ function TasksInner() {
                   >
                     <Typography
                       sx={{
-                        fontWeight: 800,
+                        fontWeight:
+                          800,
                         fontSize: 14.5,
-                        overflow: "hidden",
+                        overflow:
+                          "hidden",
                         textOverflow:
                           "ellipsis",
-                        whiteSpace: "nowrap",
+                        whiteSpace:
+                          "nowrap",
                       }}
                     >
-                      {selectedTask.title}
+                      {
+                        selectedTask.title
+                      }
                     </Typography>
+
+                    {/* USER NAME */}
 
                     <Typography
                       sx={{
-                        color: "#898394",
-                        fontSize: 11.5,
+                        color:
+                          "#6D28D9",
+                        fontSize:
+                          11.5,
+                        fontWeight:
+                          600,
                         mt: 0.2,
+                        overflow:
+                          "hidden",
+                        textOverflow:
+                          "ellipsis",
+                        whiteSpace:
+                          "nowrap",
                       }}
                     >
                       {selectedTask.mode ===
                       "GROUP"
-                        ? "Group task"
-                        : getUserName(
+                        ? `${
+                            selectedTask
+                              .participants
+                              ?.length ||
+                            0
+                          } users`
+                        : `Assigned to: ${getUserName(
                             selectedTask.assignedTo
-                          )}
+                          )}`}
                     </Typography>
                   </Box>
+
+                  {/* DELETE */}
 
                   <Tooltip title="Delete task">
                     <IconButton
                       onClick={() =>
-                        setDeleteDialogOpen(true)
+                        setDeleteDialogOpen(
+                          true
+                        )
                       }
                       sx={{
-                        color: "#B42318",
+                        color:
+                          "#B42318",
                       }}
                     >
-                      <Delete
-                        fontSize="small"
-                      />
+                      <Delete fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 </Stack>
 
+                {/* STATUS + DUE */}
+
                 <Stack
-                  direction={{
-                    xs: "column",
-                    sm: "row",
-                  }}
+                  direction="row"
                   spacing={1}
-                  sx={{ mt: 1.5 }}
+                  sx={{
+                    mt: 1.2,
+                  }}
                 >
                   <FormControl
                     size="small"
-                    fullWidth
+                    sx={{
+                      flex: 1,
+                    }}
                   >
                     <Select
                       value={
                         selectedTask.status ||
                         "pending"
                       }
-                      onChange={(event) =>
+                      onChange={(
+                        event
+                      ) =>
                         updateTaskStatus(
                           selectedTask._id,
-                          event.target.value
+                          event.target
+                            .value
                         )
                       }
                       sx={{
                         borderRadius: 2,
                         fontSize: 12,
-                        fontWeight: 700,
+                        fontWeight:
+                          700,
                       }}
                     >
                       {STATUS_OPTIONS.map(
                         (item) => (
                           <MenuItem
-                            key={item.value}
-                            value={item.value}
+                            key={
+                              item.value
+                            }
+                            value={
+                              item.value
+                            }
                           >
-                            {item.label}
+                            {
+                              item.label
+                            }
                           </MenuItem>
                         )
                       )}
@@ -1520,14 +2008,17 @@ function TasksInner() {
                       px: 1.4,
                       py: 0.9,
                       borderRadius: 2,
-                      bgcolor: "#F8F6FB",
+                      bgcolor:
+                        "#F8F6FB",
                       flex: 1,
+                      minWidth: 0,
                     }}
                   >
                     <Typography
                       sx={{
                         fontSize: 10,
-                        color: "#9892A2",
+                        color:
+                          "#9892A2",
                       }}
                     >
                       Due date
@@ -1536,8 +2027,16 @@ function TasksInner() {
                     <Typography
                       sx={{
                         fontSize: 12,
-                        fontWeight: 700,
-                        color: "#38313F",
+                        fontWeight:
+                          700,
+                        color:
+                          "#38313F",
+                        overflow:
+                          "hidden",
+                        textOverflow:
+                          "ellipsis",
+                        whiteSpace:
+                          "nowrap",
                       }}
                     >
                       {formatDate(
@@ -1556,22 +2055,38 @@ function TasksInner() {
                 sx={{
                   flex: 1,
                   minHeight: 0,
-                  overflowY: "auto",
+                  height: 0,
+                  overflowY:
+                    "auto",
+
                   px: {
-                    xs: 1.2,
+                    xs: 1,
                     sm: 2,
                   },
-                  py: 2,
-                  bgcolor: "#FBFAFD",
 
-                  "&::-webkit-scrollbar": {
-                    width: 5,
+                  py: {
+                    xs: 1.5,
+                    sm: 2,
                   },
 
-                  "&::-webkit-scrollbar-thumb": {
-                    background: "#D8D1E5",
-                    borderRadius: 10,
-                  },
+                  bgcolor:
+                    "#FBFAFD",
+
+                  WebkitOverflowScrolling:
+                    "touch",
+
+                  "&::-webkit-scrollbar":
+                    {
+                      width: 5,
+                    },
+
+                  "&::-webkit-scrollbar-thumb":
+                    {
+                      background:
+                        "#D8D1E5",
+                      borderRadius:
+                        10,
+                    },
                 }}
               >
                 {taskLoading ? (
@@ -1585,26 +2100,31 @@ function TasksInner() {
                     <CircularProgress
                       size={25}
                       sx={{
-                        color: "#7C3AED",
+                        color:
+                          "#7C3AED",
                       }}
                     />
                   </Stack>
-                ) : !selectedTask.messages
+                ) : !selectedTask
+                    .messages
                     ?.length ? (
                   <Stack
                     alignItems="center"
                     justifyContent="center"
                     sx={{
                       minHeight: 350,
-                      textAlign: "center",
+                      textAlign:
+                        "center",
                     }}
                   >
                     <Avatar
                       sx={{
                         width: 56,
                         height: 56,
-                        bgcolor: "#EEE7FF",
-                        color: "#7C3AED",
+                        bgcolor:
+                          "#EEE7FF",
+                        color:
+                          "#7C3AED",
                         mb: 1.5,
                       }}
                     >
@@ -1613,7 +2133,8 @@ function TasksInner() {
 
                     <Typography
                       sx={{
-                        fontWeight: 800,
+                        fontWeight:
+                          800,
                         fontSize: 15,
                       }}
                     >
@@ -1622,12 +2143,14 @@ function TasksInner() {
 
                     <Typography
                       sx={{
-                        color: "#8D8797",
+                        color:
+                          "#8D8797",
                         fontSize: 12,
                         mt: 0.5,
                       }}
                     >
-                      Start the task conversation.
+                      Start the task
+                      conversation.
                     </Typography>
                   </Stack>
                 ) : (
@@ -1640,7 +2163,9 @@ function TasksInner() {
                           );
 
                         const currentUserId =
-                          getId(user?._id);
+                          getId(
+                            user?._id
+                          );
 
                         const isMine =
                           senderId &&
@@ -1650,9 +2175,12 @@ function TasksInner() {
 
                         return (
                           <Box
-                            key={message._id}
+                            key={
+                              message._id
+                            }
                             sx={{
-                              display: "flex",
+                              display:
+                                "flex",
                               justifyContent:
                                 isMine
                                   ? "flex-end"
@@ -1661,16 +2189,19 @@ function TasksInner() {
                           >
                             <Box
                               sx={{
-                                maxWidth: {
-                                  xs: "88%",
-                                  sm: "75%",
-                                },
+                                maxWidth:
+                                  {
+                                    xs: "88%",
+                                    sm: "75%",
+                                  },
                               }}
                             >
                               {!isMine && (
                                 <Stack
                                   direction="row"
-                                  spacing={0.8}
+                                  spacing={
+                                    0.8
+                                  }
                                   alignItems="center"
                                   sx={{
                                     mb: 0.4,
@@ -1681,7 +2212,8 @@ function TasksInner() {
                                     sx={{
                                       width: 23,
                                       height: 23,
-                                      fontSize: 10,
+                                      fontSize:
+                                        10,
                                       bgcolor:
                                         "#E8E1F5",
                                       color:
@@ -1695,8 +2227,10 @@ function TasksInner() {
 
                                   <Typography
                                     sx={{
-                                      fontSize: 10.5,
-                                      fontWeight: 700,
+                                      fontSize:
+                                        10.5,
+                                      fontWeight:
+                                        700,
                                       color:
                                         "#80798C",
                                     }}
@@ -1709,24 +2243,35 @@ function TasksInner() {
                               )}
 
                               <Paper
-                                elevation={0}
+                                elevation={
+                                  0
+                                }
                                 sx={{
                                   position:
                                     "relative",
+
                                   p: 1.15,
+
                                   borderRadius:
                                     isMine
                                       ? "15px 15px 4px 15px"
                                       : "15px 15px 15px 4px",
-                                  bgcolor: isMine
-                                    ? "#7C3AED"
-                                    : "#fff",
-                                  color: isMine
-                                    ? "#fff"
-                                    : "#332D3A",
-                                  border: isMine
-                                    ? "none"
-                                    : "1px solid #EAE6F1",
+
+                                  bgcolor:
+                                    isMine
+                                      ? "#7C3AED"
+                                      : "#fff",
+
+                                  color:
+                                    isMine
+                                      ? "#fff"
+                                      : "#332D3A",
+
+                                  border:
+                                    isMine
+                                      ? "none"
+                                      : "1px solid #EAE6F1",
+
                                   boxShadow:
                                     "0 2px 8px rgba(30,20,50,.04)",
                                 }}
@@ -1741,19 +2286,22 @@ function TasksInner() {
                                     sx={{
                                       display:
                                         "block",
-                                      width: "100%",
+                                      width:
+                                        "100%",
                                       maxWidth: 300,
                                       maxHeight: 300,
                                       objectFit:
                                         "cover",
-                                      borderRadius: 2,
+                                      borderRadius:
+                                        2,
                                       mb:
                                         message.text &&
                                         message.text !==
                                           "📷 Photo"
                                           ? 0.8
                                           : 0,
-                                      cursor: "pointer",
+                                      cursor:
+                                        "pointer",
                                     }}
                                     onClick={() =>
                                       window.open(
@@ -1767,8 +2315,10 @@ function TasksInner() {
                                 {message.text && (
                                   <Typography
                                     sx={{
-                                      fontSize: 13,
-                                      lineHeight: 1.5,
+                                      fontSize:
+                                        13,
+                                      lineHeight:
+                                        1.5,
                                       whiteSpace:
                                         "pre-wrap",
                                       wordBreak:
@@ -1785,7 +2335,9 @@ function TasksInner() {
                                   direction="row"
                                   alignItems="center"
                                   justifyContent="flex-end"
-                                  spacing={0.5}
+                                  spacing={
+                                    0.5
+                                  }
                                   sx={{
                                     mt: 0.5,
                                   }}
@@ -1793,7 +2345,8 @@ function TasksInner() {
                                   {message.editedAt && (
                                     <Typography
                                       sx={{
-                                        fontSize: 9,
+                                        fontSize:
+                                          9,
                                         opacity:
                                           0.7,
                                       }}
@@ -1804,7 +2357,8 @@ function TasksInner() {
 
                                   <Typography
                                     sx={{
-                                      fontSize: 9,
+                                      fontSize:
+                                        9,
                                       opacity:
                                         0.65,
                                     }}
@@ -1817,8 +2371,10 @@ function TasksInner() {
                                   {isMine && (
                                     <Check
                                       sx={{
-                                        fontSize: 13,
-                                        opacity: 0.8,
+                                        fontSize:
+                                          13,
+                                        opacity:
+                                          0.8,
                                       }}
                                     />
                                   )}
@@ -1846,6 +2402,7 @@ function TasksInner() {
                                           "#6D28D9",
                                         boxShadow:
                                           "0 2px 8px rgba(0,0,0,.12)",
+
                                         "&:hover":
                                           {
                                             bgcolor:
@@ -1855,7 +2412,8 @@ function TasksInner() {
                                     >
                                       <Edit
                                         sx={{
-                                          fontSize: 13,
+                                          fontSize:
+                                            13,
                                         }}
                                       />
                                     </IconButton>
@@ -1868,21 +2426,42 @@ function TasksInner() {
                       }
                     )}
 
-                    <div ref={chatBottomRef} />
+                    <div
+                      ref={
+                        chatBottomRef
+                      }
+                    />
                   </Stack>
                 )}
               </Box>
 
               {/* =================================================
-                  MESSAGE INPUT
+                  MESSAGE COMPOSER
               ================================================= */}
 
               <Box
                 sx={{
-                  p: 1.2,
+                  p: {
+                    xs: 0.8,
+                    sm: 1.2,
+                  },
+
+                  pb: {
+                    xs: "max(8px, env(safe-area-inset-bottom))",
+                    sm: 1.2,
+                  },
+
                   borderTop:
                     "1px solid #ECE8F3",
+
                   bgcolor: "#fff",
+
+                  flexShrink: 0,
+
+                  position:
+                    "relative",
+
+                  zIndex: 3,
                 }}
               >
                 <Stack
@@ -1891,11 +2470,15 @@ function TasksInner() {
                   alignItems="flex-end"
                 >
                   <input
-                    ref={fileInputRef}
+                    ref={
+                      fileInputRef
+                    }
                     type="file"
                     accept="image/*"
                     hidden
-                    onChange={sendPhoto}
+                    onChange={
+                      sendPhoto
+                    }
                   />
 
                   <Tooltip title="Send photo">
@@ -1903,14 +2486,21 @@ function TasksInner() {
                       onClick={() =>
                         fileInputRef.current?.click()
                       }
-                      disabled={sendingMessage}
+                      disabled={
+                        sendingMessage
+                      }
                       sx={{
                         width: 40,
                         height: 40,
-                        color: "#7C3AED",
-                        bgcolor: "#F5F1FF",
+                        color:
+                          "#7C3AED",
+                        bgcolor:
+                          "#F5F1FF",
+                        flexShrink: 0,
+
                         "&:hover": {
-                          bgcolor: "#EDE5FF",
+                          bgcolor:
+                            "#EDE5FF",
                         },
                       }}
                     >
@@ -1922,15 +2512,23 @@ function TasksInner() {
                     fullWidth
                     multiline
                     maxRows={4}
-                    value={messageText}
-                    onChange={(event) =>
+                    value={
+                      messageText
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setMessageText(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
-                    onKeyDown={(event) => {
+                    onKeyDown={(
+                      event
+                    ) => {
                       if (
-                        event.key === "Enter" &&
+                        event.key ===
+                          "Enter" &&
                         !event.shiftKey
                       ) {
                         event.preventDefault();
@@ -1940,18 +2538,24 @@ function TasksInner() {
                     placeholder="Type a message..."
                     size="small"
                     sx={{
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: 2.5,
-                        bgcolor: "#FAF9FC",
-                        fontSize: 13,
-                      },
+                      "& .MuiOutlinedInput-root":
+                        {
+                          borderRadius:
+                            2.5,
+                          bgcolor:
+                            "#FAF9FC",
+                          fontSize:
+                            13,
+                          py: 0.3,
+                        },
                     }}
                     InputProps={{
                       endAdornment: (
                         <InputAdornment position="end">
                           <AttachFile
                             sx={{
-                              fontSize: 18,
+                              fontSize:
+                                18,
                               color:
                                 "#AAA4B3",
                             }}
@@ -1962,7 +2566,9 @@ function TasksInner() {
                   />
 
                   <IconButton
-                    onClick={sendMessage}
+                    onClick={
+                      sendMessage
+                    }
                     disabled={
                       sendingMessage ||
                       !messageText.trim()
@@ -1970,14 +2576,21 @@ function TasksInner() {
                     sx={{
                       width: 42,
                       height: 42,
-                      bgcolor: "#7C3AED",
+                      bgcolor:
+                        "#7C3AED",
                       color: "#fff",
+                      flexShrink: 0,
+
                       "&:hover": {
-                        bgcolor: "#6D28D9",
+                        bgcolor:
+                          "#6D28D9",
                       },
+
                       "&.Mui-disabled": {
-                        bgcolor: "#E7E2EE",
-                        color: "#AAA4B3",
+                        bgcolor:
+                          "#E7E2EE",
+                        color:
+                          "#AAA4B3",
                       },
                     }}
                   >
@@ -1985,7 +2598,8 @@ function TasksInner() {
                       <CircularProgress
                         size={18}
                         sx={{
-                          color: "#fff",
+                          color:
+                            "#fff",
                         }}
                       />
                     ) : (
@@ -2033,13 +2647,20 @@ function TasksInner() {
         </DialogTitle>
 
         <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
+          <Stack
+            spacing={2}
+            sx={{
+              pt: 1,
+            }}
+          >
             <TextField
               fullWidth
               label="Task title"
               value={title}
               onChange={(event) =>
-                setTitle(event.target.value)
+                setTitle(
+                  event.target.value
+                )
               }
               autoFocus
             />
@@ -2065,7 +2686,8 @@ function TasksInner() {
                   fontSize: 12,
                   fontWeight: 700,
                   mb: 0.7,
-                  color: "#57505F",
+                  color:
+                    "#57505F",
                 }}
               >
                 Assignment type
@@ -2074,135 +2696,177 @@ function TasksInner() {
               <Select
                 value={mode}
                 onChange={(event) => {
-                  setMode(event.target.value);
+                  setMode(
+                    event.target
+                      .value
+                  );
+
                   setAssignedTo("");
-                  setAssignedToList([]);
+                  setAssignedToList(
+                    []
+                  );
                 }}
                 sx={{
                   borderRadius: 2,
                 }}
               >
-                {MODE_OPTIONS.map((item) => (
-                  <MenuItem
-                    key={item.value}
-                    value={item.value}
-                  >
-                    <Box>
-                      <Typography
-                        sx={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {item.label}
-                      </Typography>
+                {MODE_OPTIONS.map(
+                  (item) => (
+                    <MenuItem
+                      key={
+                        item.value
+                      }
+                      value={
+                        item.value
+                      }
+                    >
+                      <Box>
+                        <Typography
+                          sx={{
+                            fontSize:
+                              13,
+                            fontWeight:
+                              700,
+                          }}
+                        >
+                          {
+                            item.label
+                          }
+                        </Typography>
 
-                      <Typography
-                        sx={{
-                          fontSize: 10.5,
-                          color: "#918A9A",
-                        }}
-                      >
-                        {item.description}
-                      </Typography>
-                    </Box>
-                  </MenuItem>
-                ))}
+                        <Typography
+                          sx={{
+                            fontSize:
+                              10.5,
+                            color:
+                              "#918A9A",
+                          }}
+                        >
+                          {
+                            item.description
+                          }
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  )
+                )}
               </Select>
             </FormControl>
 
             {/* INDIVIDUAL */}
 
-            {mode === "INDIVIDUAL" && (
+            {mode ===
+              "INDIVIDUAL" && (
               <FormControl fullWidth>
                 <Typography
                   sx={{
                     fontSize: 12,
                     fontWeight: 700,
                     mb: 0.7,
-                    color: "#57505F",
+                    color:
+                      "#57505F",
                   }}
                 >
-                  Select teacher
+                  Select user
                 </Typography>
 
                 <Select
-                  value={assignedTo}
-                  onChange={(event) =>
+                  value={
+                    assignedTo
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setAssignedTo(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   displayEmpty
-                  disabled={usersLoading}
+                  disabled={
+                    usersLoading
+                  }
                   sx={{
                     borderRadius: 2,
                   }}
                 >
                   <MenuItem value="">
-                    Select teacher
+                    Select user
                   </MenuItem>
 
-                  {users.map((teacher) => (
-                    <MenuItem
-                      key={teacher._id}
-                      value={teacher._id}
-                    >
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
+                  {users.map(
+                    (member) => (
+                      <MenuItem
+                        key={
+                          member._id
+                        }
+                        value={
+                          member._id
+                        }
                       >
-                        <Avatar
-                          sx={{
-                            width: 28,
-                            height: 28,
-                            fontSize: 11,
-                            bgcolor:
-                              "#EEE7FF",
-                            color:
-                              "#6D28D9",
-                          }}
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          alignItems="center"
                         >
-                          {getInitial(
-                            teacher
-                          )}
-                        </Avatar>
-
-                        <Box>
-                          <Typography
+                          <Avatar
                             sx={{
-                              fontSize: 13,
-                              fontWeight: 700,
+                              width: 28,
+                              height: 28,
+                              fontSize:
+                                11,
+                              bgcolor:
+                                "#EEE7FF",
+                              color:
+                                "#6D28D9",
                             }}
                           >
-                            {getUserName(
-                              teacher
+                            {getInitial(
+                              member
                             )}
-                          </Typography>
+                          </Avatar>
 
-                          {teacher.email && (
+                          <Box>
                             <Typography
                               sx={{
-                                fontSize: 10,
-                                color:
-                                  "#8E8797",
+                                fontSize:
+                                  13,
+                                fontWeight:
+                                  700,
                               }}
                             >
-                              {teacher.email}
+                              {getUserName(
+                                member
+                              )}
                             </Typography>
-                          )}
-                        </Box>
-                      </Stack>
-                    </MenuItem>
-                  ))}
+
+                            {member.email && (
+                              <Typography
+                                sx={{
+                                  fontSize:
+                                    10,
+                                  color:
+                                    "#8E8797",
+                                }}
+                              >
+                                {
+                                  member.email
+                                }
+                              </Typography>
+                            )}
+                          </Box>
+                        </Stack>
+                      </MenuItem>
+                    )
+                  )}
                 </Select>
               </FormControl>
             )}
 
             {/* SEPARATE / GROUP */}
 
-            {(mode === "SEPARATE" ||
+            {(mode ===
+              "SEPARATE" ||
               mode === "GROUP") && (
               <FormControl fullWidth>
                 <Typography
@@ -2210,41 +2874,56 @@ function TasksInner() {
                     fontSize: 12,
                     fontWeight: 700,
                     mb: 0.7,
-                    color: "#57505F",
+                    color:
+                      "#57505F",
                   }}
                 >
-                  Select teachers
+                  Select users
                 </Typography>
 
                 <Select
                   multiple
-                  value={assignedToList}
-                  onChange={(event) =>
+                  value={
+                    assignedToList
+                  }
+                  onChange={(
+                    event
+                  ) =>
                     setAssignedToList(
-                      typeof event.target
-                        .value === "string"
+                      typeof event
+                        .target
+                        .value ===
+                        "string"
                         ? event.target.value.split(
                             ","
                           )
-                        : event.target.value
+                        : event.target
+                            .value
                     )
                   }
                   displayEmpty
-                  disabled={usersLoading}
+                  disabled={
+                    usersLoading
+                  }
                   sx={{
                     borderRadius: 2,
                   }}
-                  renderValue={(selected) => {
-                    if (!selected.length) {
+                  renderValue={(
+                    selected
+                  ) => {
+                    if (
+                      !selected.length
+                    ) {
                       return (
                         <Typography
                           sx={{
                             color:
                               "#9A94A3",
-                            fontSize: 13,
+                            fontSize:
+                              13,
                           }}
                         >
-                          Select teachers
+                          Select users
                         </Typography>
                       );
                     }
@@ -2252,18 +2931,24 @@ function TasksInner() {
                     return (
                       <Stack
                         direction="row"
-                        spacing={0.5}
+                        spacing={
+                          0.5
+                        }
                         flexWrap="wrap"
                       >
                         {selected.map(
                           (id) => {
-                            const teacher =
+                            const member =
                               users.find(
-                                (item) =>
+                                (
+                                  item
+                                ) =>
                                   String(
                                     item._id
                                   ) ===
-                                  String(id)
+                                  String(
+                                    id
+                                  )
                               );
 
                             return (
@@ -2271,10 +2956,11 @@ function TasksInner() {
                                 key={id}
                                 size="small"
                                 label={getUserName(
-                                  teacher
+                                  member
                                 )}
                                 sx={{
-                                  borderRadius: 1.5,
+                                  borderRadius:
+                                    1.5,
                                 }}
                               />
                             );
@@ -2284,48 +2970,59 @@ function TasksInner() {
                     );
                   }}
                 >
-                  {users.map((teacher) => (
-                    <MenuItem
-                      key={teacher._id}
-                      value={teacher._id}
-                    >
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
+                  {users.map(
+                    (member) => (
+                      <MenuItem
+                        key={
+                          member._id
+                        }
+                        value={
+                          member._id
+                        }
                       >
-                        <Avatar
-                          sx={{
-                            width: 28,
-                            height: 28,
-                            fontSize: 11,
-                            bgcolor:
-                              "#EEE7FF",
-                            color:
-                              "#6D28D9",
-                          }}
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          alignItems="center"
                         >
-                          {getInitial(
-                            teacher
-                          )}
-                        </Avatar>
+                          <Avatar
+                            sx={{
+                              width: 28,
+                              height: 28,
+                              fontSize:
+                                11,
+                              bgcolor:
+                                "#EEE7FF",
+                              color:
+                                "#6D28D9",
+                            }}
+                          >
+                            {getInitial(
+                              member
+                            )}
+                          </Avatar>
 
-                        <Typography
-                          sx={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {getUserName(
-                            teacher
-                          )}
-                        </Typography>
-                      </Stack>
-                    </MenuItem>
-                  ))}
+                          <Typography
+                            sx={{
+                              fontSize:
+                                13,
+                              fontWeight:
+                                600,
+                            }}
+                          >
+                            {getUserName(
+                              member
+                            )}
+                          </Typography>
+                        </Stack>
+                      </MenuItem>
+                    )
+                  )}
                 </Select>
               </FormControl>
             )}
+
+            {/* DUE DATE */}
 
             <TextField
               fullWidth
@@ -2333,7 +3030,9 @@ function TasksInner() {
               label="Due date"
               value={dueDate}
               onChange={(event) =>
-                setDueDate(event.target.value)
+                setDueDate(
+                  event.target.value
+                )
               }
               InputLabelProps={{
                 shrink: true,
@@ -2349,7 +3048,8 @@ function TasksInner() {
                 borderRadius: 2.5,
                 border:
                   "1px solid #EAE5F2",
-                bgcolor: "#FBFAFD",
+                bgcolor:
+                  "#FBFAFD",
               }}
             >
               <Stack
@@ -2371,12 +3071,15 @@ function TasksInner() {
                   <Typography
                     sx={{
                       fontSize: 10.5,
-                      color: "#918A9A",
+                      color:
+                        "#918A9A",
                       mt: 0.2,
                     }}
                   >
-                    Automatically create the next
-                    task after completion.
+                    Automatically
+                    create the
+                    next task after
+                    completion.
                   </Typography>
                 </Box>
 
@@ -2389,18 +3092,24 @@ function TasksInner() {
                   }
                   onClick={() =>
                     setRecurrenceEnabled(
-                      (previous) => !previous
+                      (previous) =>
+                        !previous
                     )
                   }
                   sx={{
                     minWidth: 80,
                     borderRadius: 2,
-                    textTransform: "none",
+                    textTransform:
+                      "none",
                     fontWeight: 700,
+
                     ...(recurrenceEnabled && {
-                      bgcolor: "#7C3AED",
+                      bgcolor:
+                        "#7C3AED",
+
                       "&:hover": {
-                        bgcolor: "#6D28D9",
+                        bgcolor:
+                          "#6D28D9",
                       },
                     }),
                   }}
@@ -2415,13 +3124,20 @@ function TasksInner() {
                 <FormControl
                   fullWidth
                   size="small"
-                  sx={{ mt: 1.5 }}
+                  sx={{
+                    mt: 1.5,
+                  }}
                 >
                   <Select
-                    value={recurrenceFrequency}
-                    onChange={(event) =>
+                    value={
+                      recurrenceFrequency
+                    }
+                    onChange={(
+                      event
+                    ) =>
                       setRecurrenceFrequency(
-                        event.target.value
+                        event.target
+                          .value
                       )
                     }
                     sx={{
@@ -2431,10 +3147,16 @@ function TasksInner() {
                     {RECURRENCE_OPTIONS.map(
                       (item) => (
                         <MenuItem
-                          key={item.value}
-                          value={item.value}
+                          key={
+                            item.value
+                          }
+                          value={
+                            item.value
+                          }
                         >
-                          {item.label}
+                          {
+                            item.label
+                          }
                         </MenuItem>
                       )
                     )}
@@ -2443,12 +3165,16 @@ function TasksInner() {
               )}
             </Paper>
 
-            {(mode === "SEPARATE" ||
+            {(mode ===
+              "SEPARATE" ||
               mode === "GROUP") &&
-              assignedToList.length > 0 &&
-              assignedToList.length < 2 && (
+              assignedToList.length >
+                0 &&
+              assignedToList.length <
+                2 && (
                 <Alert severity="info">
-                  Select at least two teachers for{" "}
+                  Select at least two
+                  users for{" "}
                   {mode === "GROUP"
                     ? "a group task"
                     : "separate assignment"}
@@ -2471,7 +3197,8 @@ function TasksInner() {
             }}
             disabled={creating}
             sx={{
-              textTransform: "none",
+              textTransform:
+                "none",
               fontWeight: 700,
               color: "#686172",
             }}
@@ -2481,14 +3208,17 @@ function TasksInner() {
 
           <Button
             variant="contained"
-            onClick={handleCreateTask}
+            onClick={
+              handleCreateTask
+            }
             disabled={creating}
             startIcon={
               creating ? (
                 <CircularProgress
                   size={16}
                   sx={{
-                    color: "#fff",
+                    color:
+                      "#fff",
                   }}
                 />
               ) : (
@@ -2497,11 +3227,15 @@ function TasksInner() {
             }
             sx={{
               borderRadius: 2,
-              textTransform: "none",
+              textTransform:
+                "none",
               fontWeight: 700,
-              bgcolor: "#7C3AED",
+              bgcolor:
+                "#7C3AED",
+
               "&:hover": {
-                bgcolor: "#6D28D9",
+                bgcolor:
+                  "#6D28D9",
               },
             }}
           >
@@ -2513,12 +3247,16 @@ function TasksInner() {
       </Dialog>
 
       {/* =======================================================
-          EDIT MESSAGE DIALOG
+          EDIT MESSAGE
       ======================================================= */}
 
       <Dialog
-        open={Boolean(editingMessage)}
-        onClose={cancelEditMessage}
+        open={Boolean(
+          editingMessage
+        )}
+        onClose={
+          cancelEditMessage
+        }
         fullWidth
         maxWidth="xs"
         PaperProps={{
@@ -2543,22 +3281,34 @@ function TasksInner() {
             minRows={3}
             value={editText}
             onChange={(event) =>
-              setEditText(event.target.value)
+              setEditText(
+                event.target.value
+              )
             }
             sx={{
               mt: 1,
-              "& .MuiOutlinedInput-root": {
-                borderRadius: 2,
-              },
+
+              "& .MuiOutlinedInput-root":
+                {
+                  borderRadius: 2,
+                },
             }}
           />
         </DialogContent>
 
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2,
+          }}
+        >
           <Button
-            onClick={cancelEditMessage}
+            onClick={
+              cancelEditMessage
+            }
             sx={{
-              textTransform: "none",
+              textTransform:
+                "none",
               fontWeight: 700,
             }}
           >
@@ -2567,14 +3317,20 @@ function TasksInner() {
 
           <Button
             variant="contained"
-            onClick={saveEditedMessage}
+            onClick={
+              saveEditedMessage
+            }
             sx={{
               borderRadius: 2,
-              textTransform: "none",
+              textTransform:
+                "none",
               fontWeight: 700,
-              bgcolor: "#7C3AED",
+              bgcolor:
+                "#7C3AED",
+
               "&:hover": {
-                bgcolor: "#6D28D9",
+                bgcolor:
+                  "#6D28D9",
               },
             }}
           >
@@ -2584,14 +3340,16 @@ function TasksInner() {
       </Dialog>
 
       {/* =======================================================
-          DELETE DIALOG
+          DELETE TASK
       ======================================================= */}
 
       <Dialog
         open={deleteDialogOpen}
         onClose={() =>
           !deleting &&
-          setDeleteDialogOpen(false)
+          setDeleteDialogOpen(
+            false
+          )
         }
         maxWidth="xs"
         fullWidth
@@ -2616,19 +3374,28 @@ function TasksInner() {
               fontSize: 13,
             }}
           >
-            This will permanently delete this task
-            and its conversation.
+            This will permanently
+            delete this task and its
+            conversation.
           </Typography>
         </DialogContent>
 
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 2.5,
+          }}
+        >
           <Button
             onClick={() =>
-              setDeleteDialogOpen(false)
+              setDeleteDialogOpen(
+                false
+              )
             }
             disabled={deleting}
             sx={{
-              textTransform: "none",
+              textTransform:
+                "none",
               fontWeight: 700,
             }}
           >
@@ -2638,14 +3405,17 @@ function TasksInner() {
           <Button
             variant="contained"
             color="error"
-            onClick={deleteCurrentTask}
+            onClick={
+              deleteCurrentTask
+            }
             disabled={deleting}
             startIcon={
               deleting ? (
                 <CircularProgress
                   size={16}
                   sx={{
-                    color: "#fff",
+                    color:
+                      "#fff",
                   }}
                 />
               ) : (
@@ -2654,7 +3424,8 @@ function TasksInner() {
             }
             sx={{
               borderRadius: 2,
-              textTransform: "none",
+              textTransform:
+                "none",
               fontWeight: 700,
             }}
           >
@@ -2679,4 +3450,3 @@ export default function TasksPage() {
     </ProtectedRoute>
   );
 }
-

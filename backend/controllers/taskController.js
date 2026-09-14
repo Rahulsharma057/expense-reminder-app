@@ -27,28 +27,35 @@ const isSuperAdmin = (role) => {
 };
 
 // ======================================================
-// REALTIME HELPERS (Socket.io)
-// Every call is wrapped so that if socket.io hasn't been
-// initialized (e.g. a script/test run), nothing breaks —
-// the app just behaves as if realtime were "off".
+// REALTIME HELPERS
 // ======================================================
 
 const emitToTask = (taskId, event, payload) => {
   const io = getIO();
   if (!io) return;
+
   io.to(`task:${taskId}`).emit(event, payload);
 };
 
 const emitToUser = (userId, event, payload) => {
   const io = getIO();
   if (!io) return;
+
   io.to(String(userId)).emit(event, payload);
 };
 
 const emitToUsers = (userIds, event, payload) => {
   const io = getIO();
   if (!io) return;
-  [...new Set((userIds || []).filter(Boolean).map(toId))].forEach((id) => {
+
+  [
+    ...new Set(
+      (userIds || [])
+        .filter(Boolean)
+        .map(toId)
+        .filter(Boolean)
+    ),
+  ].forEach((id) => {
     io.to(id).emit(event, payload);
   });
 };
@@ -58,7 +65,6 @@ const emitToUsers = (userIds, event, payload) => {
 // ======================================================
 
 const getTaskParticipants = (task) => {
-  // GROUP
   if (task.mode === "GROUP") {
     return Array.isArray(task.participants)
       ? task.participants
@@ -67,7 +73,6 @@ const getTaskParticipants = (task) => {
       : [];
   }
 
-  // INDIVIDUAL / SEPARATE
   if (task.assignedTo) {
     return [toId(task.assignedTo)];
   }
@@ -106,17 +111,17 @@ const isTaskAssigner = (task, userId) => {
 const canAccessTask = (task, userId, role) => {
   if (!task || !userId) return false;
 
-  // SuperAdmin can access everything
+  // Superadmin can access everything.
   if (isSuperAdmin(role)) {
     return true;
   }
 
-  // Task creator can access
+  // Creator / assigner can access.
   if (isTaskAssigner(task, userId)) {
     return true;
   }
 
-  // Assigned teacher / group participant
+  // Assigned user / group participant can access.
   if (isTaskParticipant(task, userId)) {
     return true;
   }
@@ -162,8 +167,6 @@ const notifyUsers = async ({
     )
   );
 
-  // Push it live too, so a phone with the app open gets it instantly
-  // instead of waiting for the next poll/refresh.
   emitToUsers(uniqueRecipients, "notification", {
     type,
     title,
@@ -184,11 +187,21 @@ const addDays = (date, days) => {
 };
 
 const computeNextDueDate = (currentDueDate, frequency) => {
-  const base = currentDueDate ? new Date(currentDueDate) : new Date();
-  const valid = Number.isNaN(base.getTime()) ? new Date() : base;
+  const base = currentDueDate
+    ? new Date(currentDueDate)
+    : new Date();
 
-  if (frequency === "daily") return addDays(valid, 1);
-  if (frequency === "weekly") return addDays(valid, 7);
+  const valid = Number.isNaN(base.getTime())
+    ? new Date()
+    : base;
+
+  if (frequency === "daily") {
+    return addDays(valid, 1);
+  }
+
+  if (frequency === "weekly") {
+    return addDays(valid, 7);
+  }
 
   if (frequency === "monthly") {
     const d = new Date(valid);
@@ -199,12 +212,15 @@ const computeNextDueDate = (currentDueDate, frequency) => {
   return null;
 };
 
-const toDateInputString = (date) => date.toISOString().slice(0, 10);
+const toDateInputString = (date) => {
+  return date.toISOString().slice(0, 10);
+};
 
-// Called after a task's status flips to "completed". If the task is
-// marked recurring, creates the next occurrence and notifies everyone.
 const spawnNextRecurrence = async (completedTask) => {
-  if (!completedTask?.recurrence?.enabled || !completedTask.recurrence.frequency) {
+  if (
+    !completedTask?.recurrence?.enabled ||
+    !completedTask.recurrence.frequency
+  ) {
     return null;
   }
 
@@ -213,7 +229,9 @@ const spawnNextRecurrence = async (completedTask) => {
     completedTask.recurrence.frequency
   );
 
-  if (!nextDue) return null;
+  if (!nextDue) {
+    return null;
+  }
 
   const nextTask = await Task.create({
     title: completedTask.title,
@@ -228,9 +246,18 @@ const spawnNextRecurrence = async (completedTask) => {
   });
 
   const populatedNext = await nextTask.populate([
-    { path: "assignedTo", select: "name email role" },
-    { path: "participants", select: "name email role" },
-    { path: "assignedBy", select: "name email role" },
+    {
+      path: "assignedTo",
+      select: "name email role",
+    },
+    {
+      path: "participants",
+      select: "name email role",
+    },
+    {
+      path: "assignedBy",
+      select: "name email role",
+    },
   ]);
 
   const recipients = getTaskParticipants(completedTask);
@@ -240,7 +267,9 @@ const spawnNextRecurrence = async (completedTask) => {
     senderId: completedTask.assignedBy,
     type: "NEW_TASK",
     title: "Recurring Task Renewed",
-    message: `"${completedTask.title}" has been scheduled again — due ${toDateInputString(nextDue)}.`,
+    message: `"${completedTask.title}" has been scheduled again — due ${toDateInputString(
+      nextDue
+    )}.`,
     task: populatedNext._id,
   });
 
@@ -248,30 +277,37 @@ const spawnNextRecurrence = async (completedTask) => {
 };
 
 // ======================================================
-// POST /api/tasks
-//
-// INDIVIDUAL
-// One teacher = one task
-//
-// SEPARATE
-// Multiple teachers = separate tasks/chats
-//
-// GROUP
-// Multiple teachers = one task/shared chat
-//
-// Optional body field for any mode:
-//   recurrence: { enabled: true, frequency: "daily" | "weekly" | "monthly" }
+// RECURRENCE NORMALIZER
 // ======================================================
 
 const normalizeRecurrence = (recurrence) => {
   if (!recurrence || !recurrence.enabled) {
-    return { enabled: false, frequency: null };
+    return {
+      enabled: false,
+      frequency: null,
+    };
   }
-  if (!["daily", "weekly", "monthly"].includes(recurrence.frequency)) {
-    return { enabled: false, frequency: null };
+
+  if (
+    !["daily", "weekly", "monthly"].includes(
+      recurrence.frequency
+    )
+  ) {
+    return {
+      enabled: false,
+      frequency: null,
+    };
   }
-  return { enabled: true, frequency: recurrence.frequency };
+
+  return {
+    enabled: true,
+    frequency: recurrence.frequency,
+  };
 };
+
+// ======================================================
+// CREATE TASK
+// ======================================================
 
 const createTask = async (req, res) => {
   try {
@@ -285,21 +321,23 @@ const createTask = async (req, res) => {
       recurrence,
     } = req.body;
 
+    if (!req.user?._id) {
+      return res.status(401).json({
+        message: "Authentication required",
+      });
+    }
+
     if (!title?.trim()) {
       return res.status(400).json({
         message: "Task title is required",
       });
     }
 
-    if (!["INDIVIDUAL", "SEPARATE", "GROUP"].includes(mode)) {
+    if (
+      !["INDIVIDUAL", "SEPARATE", "GROUP"].includes(mode)
+    ) {
       return res.status(400).json({
         message: "Invalid task mode",
-      });
-    }
-
-    if (!req.user?._id) {
-      return res.status(401).json({
-        message: "Authentication required",
       });
     }
 
@@ -391,7 +429,7 @@ const createTask = async (req, res) => {
 
       if (invalidTeacher) {
         return res.status(400).json({
-          message: "One or more teacher IDs are invalid",
+          message: "One or more user IDs are invalid",
         });
       }
 
@@ -420,11 +458,15 @@ const createTask = async (req, res) => {
         )
       );
 
-      createdTasks.forEach((task) => emitToUser(task.assignedTo, "newTask", task));
+      createdTasks.forEach((task) => {
+        emitToUser(task.assignedTo, "newTask", task);
+      });
 
       const populatedTasks = await Task.find({
         _id: {
-          $in: createdTasks.map((task) => task._id),
+          $in: createdTasks.map(
+            (task) => task._id
+          ),
         },
       })
         .populate("assignedTo", "name email role")
@@ -525,12 +567,7 @@ const createTask = async (req, res) => {
 };
 
 // ======================================================
-// GET /api/tasks/mine
-//
-// Teacher gets:
-// INDIVIDUAL -> assignedTo
-// SEPARATE   -> assignedTo
-// GROUP      -> participants
+// GET MY TASKS
 // ======================================================
 
 const getMyTasks = async (req, res) => {
@@ -545,17 +582,23 @@ const getMyTasks = async (req, res) => {
 
     const tasks = await Task.find({
       $or: [
-        {
-          assignedTo: userId,
-        },
-        {
-          participants: userId,
-        },
+        { assignedTo: userId },
+        { participants: userId },
+        { assignedBy: userId },
       ],
     })
-      .populate("assignedBy", "name email role")
-      .populate("assignedTo", "name email role")
-      .populate("participants", "name email role")
+      .populate(
+        "assignedBy",
+        "name username email role isActive"
+      )
+      .populate(
+        "assignedTo",
+        "name username email role isActive"
+      )
+      .populate(
+        "participants",
+        "name username email role isActive"
+      )
       .sort({ createdAt: -1 });
 
     return res.json(tasks);
@@ -569,12 +612,18 @@ const getMyTasks = async (req, res) => {
 };
 
 // ======================================================
-// GET /api/tasks
-// SUPERADMIN
+// GET ALL TASKS
+// SUPERADMIN ONLY
 // ======================================================
 
 const getAllTasks = async (req, res) => {
   try {
+    if (!isSuperAdmin(req.user?.role)) {
+      return res.status(403).json({
+        message: "Only superadmin can view all tasks",
+      });
+    }
+
     const tasks = await Task.find()
       .populate("assignedTo", "name email role")
       .populate("participants", "name email role")
@@ -592,7 +641,7 @@ const getAllTasks = async (req, res) => {
 };
 
 // ======================================================
-// GET /api/tasks/:id
+// GET TASK BY ID
 // ======================================================
 
 const getTaskById = async (req, res) => {
@@ -640,9 +689,7 @@ const getTaskById = async (req, res) => {
 };
 
 // ======================================================
-// PATCH /api/tasks/:id/status
-// Triggers a recurring re-creation + "congrats" event when
-// a task is moved to "completed".
+// UPDATE STATUS
 // ======================================================
 
 const updateStatus = async (req, res) => {
@@ -657,7 +704,9 @@ const updateStatus = async (req, res) => {
     }
 
     if (
-      !["pending", "in-progress", "completed"].includes(status)
+      !["pending", "in-progress", "completed"].includes(
+        status
+      )
     ) {
       return res.status(400).json({
         message: "Invalid status",
@@ -665,7 +714,7 @@ const updateStatus = async (req, res) => {
     }
 
     const task = await Task.findById(id).select(
-      "assignedTo assignedBy participants status title mode dueDate recurrence"
+      "assignedTo assignedBy participants status title mode dueDate recurrence description"
     );
 
     if (!task) {
@@ -704,24 +753,17 @@ const updateStatus = async (req, res) => {
       .populate("participants", "name email role")
       .populate("assignedBy", "name email role");
 
-    // ==================================================
-    // NOTIFICATION RECIPIENTS
-    // ==================================================
-
     let recipients = [];
 
     if (isTaskAssigner(task, req.user._id)) {
-      // Admin changed status
       recipients = getTaskParticipants(task);
     } else {
-      // Teacher changed status
-      recipients = [
-        task.assignedBy,
-      ];
+      recipients = [task.assignedBy];
 
-      // Group: notify other participants also
       if (task.mode === "GROUP") {
-        recipients.push(...getTaskParticipants(task));
+        recipients.push(
+          ...getTaskParticipants(task)
+        );
       }
     }
 
@@ -740,8 +782,10 @@ const updateStatus = async (req, res) => {
       updatedBy: req.user.name,
     });
 
-    // Congrats + recurrence, only on the pending/in-progress -> completed transition
-    if (status === "completed" && oldStatus !== "completed") {
+    if (
+      status === "completed" &&
+      oldStatus !== "completed"
+    ) {
       const allRecipients = [
         task.assignedBy,
         ...getTaskParticipants(task),
@@ -767,8 +811,7 @@ const updateStatus = async (req, res) => {
 };
 
 // ======================================================
-// POST /api/tasks/:id/messages
-// Text message (photo messages use addPhotoMessage below).
+// ADD TEXT MESSAGE
 // ======================================================
 
 const addMessage = async (req, res) => {
@@ -837,10 +880,6 @@ const addMessage = async (req, res) => {
     const newMessage =
       updated.messages[updated.messages.length - 1];
 
-    // ==================================================
-    // NOTIFICATION RECIPIENTS
-    // ==================================================
-
     let recipients = [];
 
     if (task.mode === "GROUP") {
@@ -867,7 +906,10 @@ const addMessage = async (req, res) => {
       task: task._id,
     });
 
-    emitToTask(id, "newMessage", { taskId: id, message: newMessage });
+    emitToTask(id, "newMessage", {
+      taskId: id,
+      message: newMessage,
+    });
 
     return res.status(201).json(newMessage);
   } catch (err) {
@@ -880,9 +922,7 @@ const addMessage = async (req, res) => {
 };
 
 // ======================================================
-// POST /api/tasks/:id/messages/photo
-// multipart/form-data, field name "photo"
-// (route wires in uploadTaskPhoto.single("photo") first)
+// ADD PHOTO MESSAGE
 // ======================================================
 
 const addPhotoMessage = async (req, res) => {
@@ -890,11 +930,15 @@ const addPhotoMessage = async (req, res) => {
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid task ID" });
+      return res.status(400).json({
+        message: "Invalid task ID",
+      });
     }
 
     if (!req.file) {
-      return res.status(400).json({ message: "No photo uploaded" });
+      return res.status(400).json({
+        message: "No photo uploaded",
+      });
     }
 
     const task = await Task.findById(id).select(
@@ -902,15 +946,23 @@ const addPhotoMessage = async (req, res) => {
     );
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({
+        message: "Task not found",
+      });
     }
 
-    if (!canAccessTask(task, req.user?._id, req.user?.role)) {
-      return res.status(403).json({ message: "Not authorized" });
+    if (
+      !canAccessTask(
+        task,
+        req.user?._id,
+        req.user?.role
+      )
+    ) {
+      return res.status(403).json({
+        message: "Not authorized",
+      });
     }
 
-    // multer-storage-cloudinary puts the uploaded image's full,
-    // ready-to-use Cloudinary URL on req.file.path.
     const photoUrl = req.file.path;
     const caption = req.body?.caption?.trim();
 
@@ -927,37 +979,61 @@ const addPhotoMessage = async (req, res) => {
           },
         },
       },
-      { new: true, runValidators: true }
+      {
+        new: true,
+        runValidators: true,
+      }
     ).populate("messages.sender", "name role");
 
-    const newMessage = updated.messages[updated.messages.length - 1];
+    if (!updated) {
+      return res.status(404).json({
+        message: "Task not found",
+      });
+    }
+
+    const newMessage =
+      updated.messages[updated.messages.length - 1];
 
     const recipients =
       task.mode === "GROUP"
-        ? [task.assignedBy, ...task.participants]
-        : [task.assignedBy, task.assignedTo];
+        ? [
+            task.assignedBy,
+            ...task.participants,
+          ]
+        : [
+            task.assignedBy,
+            task.assignedTo,
+          ];
 
     await notifyUsers({
       recipients,
       senderId: req.user._id,
       type: "NEW_MESSAGE",
-      title: task.mode === "GROUP" ? "New Group Task Message" : "New Task Message",
+      title:
+        task.mode === "GROUP"
+          ? "New Group Task Message"
+          : "New Task Message",
       message: `${req.user.name} sent a photo on task "${task.title}".`,
       task: task._id,
     });
 
-    emitToTask(id, "newMessage", { taskId: id, message: newMessage });
+    emitToTask(id, "newMessage", {
+      taskId: id,
+      message: newMessage,
+    });
 
     return res.status(201).json(newMessage);
   } catch (err) {
     console.error("addPhotoMessage error:", err);
-    return res.status(500).json({ message: "Could not send photo" });
+
+    return res.status(500).json({
+      message: "Could not send photo",
+    });
   }
 };
 
 // ======================================================
-// PATCH /api/tasks/:id/messages/:messageId
-// Sender can edit their own message within 24 hours of sending.
+// EDIT MESSAGE
 // ======================================================
 
 const editMessage = async (req, res) => {
@@ -969,11 +1045,15 @@ const editMessage = async (req, res) => {
       !mongoose.Types.ObjectId.isValid(id) ||
       !mongoose.Types.ObjectId.isValid(messageId)
     ) {
-      return res.status(400).json({ message: "Invalid ID" });
+      return res.status(400).json({
+        message: "Invalid ID",
+      });
     }
 
     if (!text?.trim()) {
-      return res.status(400).json({ message: "Message text required" });
+      return res.status(400).json({
+        message: "Message text required",
+      });
     }
 
     const task = await Task.findById(id).select(
@@ -981,33 +1061,53 @@ const editMessage = async (req, res) => {
     );
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({
+        message: "Task not found",
+      });
     }
 
-    if (!canAccessTask(task, req.user?._id, req.user?.role)) {
-      return res.status(403).json({ message: "Not authorized" });
+    if (
+      !canAccessTask(
+        task,
+        req.user?._id,
+        req.user?.role
+      )
+    ) {
+      return res.status(403).json({
+        message: "Not authorized",
+      });
     }
 
     const msg = task.messages.id(messageId);
+
     if (!msg) {
-      return res.status(404).json({ message: "Message not found" });
+      return res.status(404).json({
+        message: "Message not found",
+      });
     }
 
     if (!isSameId(msg.sender, req.user._id)) {
-      return res.status(403).json({ message: "You can only edit your own messages" });
+      return res.status(403).json({
+        message:
+          "You can only edit your own messages",
+      });
     }
 
     const hoursSinceSent =
-      (Date.now() - new Date(msg.createdAt).getTime()) / (1000 * 60 * 60);
+      (Date.now() -
+        new Date(msg.createdAt).getTime()) /
+      (1000 * 60 * 60);
 
     if (hoursSinceSent > 24) {
       return res.status(400).json({
-        message: "This message can no longer be edited (24 hour limit)",
+        message:
+          "This message can no longer be edited (24 hour limit)",
       });
     }
 
     msg.text = text.trim();
     msg.editedAt = new Date();
+
     await task.save();
 
     emitToTask(id, "messageEdited", {
@@ -1020,12 +1120,15 @@ const editMessage = async (req, res) => {
     return res.json(msg);
   } catch (err) {
     console.error("editMessage error:", err);
-    return res.status(500).json({ message: "Could not edit message" });
+
+    return res.status(500).json({
+      message: "Could not edit message",
+    });
   }
 };
 
 // ======================================================
-// PATCH /api/tasks/:id/messages/seen
+// MARK MESSAGES SEEN
 // ======================================================
 
 const markMessagesSeen = async (req, res) => {
@@ -1071,7 +1174,10 @@ const markMessagesSeen = async (req, res) => {
       }
     );
 
-    emitToTask(id, "messagesSeen", { taskId: id, userId: req.user._id });
+    emitToTask(id, "messagesSeen", {
+      taskId: id,
+      userId: req.user._id,
+    });
 
     return res.json({
       ok: true,
@@ -1086,8 +1192,8 @@ const markMessagesSeen = async (req, res) => {
 };
 
 // ======================================================
-// DELETE /api/tasks/:id
-// SUPERADMIN
+// DELETE TASK
+// CREATOR OR SUPERADMIN ONLY
 // ======================================================
 
 const deleteTask = async (req, res) => {
@@ -1107,6 +1213,22 @@ const deleteTask = async (req, res) => {
     if (!task) {
       return res.status(404).json({
         message: "Task not found",
+      });
+    }
+
+    const isCreator = isTaskAssigner(
+      task,
+      req.user?._id
+    );
+
+    const isAdmin = isSuperAdmin(
+      req.user?.role
+    );
+
+    if (!isCreator && !isAdmin) {
+      return res.status(403).json({
+        message:
+          "Only the task creator or superadmin can delete this task",
       });
     }
 
