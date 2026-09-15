@@ -2,55 +2,120 @@ const { Server } = require("socket.io");
 
 let io = null;
 
-// Call this ONCE in your server.js, right after you create the
-// http server and before server.listen(...):
-//
-//   const http = require("http");
-//   const { initSocket } = require("./utils/socket");
-//   const app = require("./app");           // your express app
-//   const server = http.createServer(app);
-//   initSocket(server);
-//   server.listen(PORT, () => console.log("listening..."));
-//
 const initSocket = (server) => {
+  const allowedOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+  ];
+
+  // Production frontend URL
+  if (process.env.CLIENT_ORIGIN) {
+    allowedOrigins.push(process.env.CLIENT_ORIGIN);
+  }
+
   io = new Server(server, {
     cors: {
-      origin: process.env.CLIENT_ORIGIN || "*", // set this to your frontend URL in production
-      methods: ["GET", "POST", "PATCH", "DELETE"],
+      origin: (origin, callback) => {
+        // Requests without browser origin
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        // Exact allowed origins
+        if (allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        // Allow Vercel production + preview URLs
+        if (
+          origin.startsWith("https://") &&
+          origin.endsWith(".vercel.app")
+        ) {
+          return callback(null, true);
+        }
+
+        console.log("❌ Socket.IO CORS blocked:", origin);
+
+        return callback(new Error("Not allowed by Socket.IO CORS"));
+      },
+
+      methods: [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS",
+      ],
+
+      credentials: true,
     },
+
+    // WebSocket first + polling fallback
+    transports: ["websocket", "polling"],
   });
 
   io.on("connection", (socket) => {
-    // Every logged-in user joins a room named after their own user id.
-    // This lets the backend push a notification straight to them with
-    // io.to(userId).emit("notification", {...}) from anywhere.
+    console.log("🟢 Socket connected:", socket.id);
+
+    // User notification room
     socket.on("join", (userId) => {
-      if (userId) socket.join(String(userId));
+      if (!userId) return;
+
+      const room = String(userId);
+
+      socket.join(room);
+
+      console.log(`👤 User ${room} joined socket room`);
     });
 
-    // Whoever has a task's chat screen open joins that task's room,
-    // so new messages / status changes appear live for everyone
-    // looking at it, WhatsApp-style.
+    // Task chat room
     socket.on("joinTask", (taskId) => {
-      if (taskId) socket.join(`task:${taskId}`);
+      if (!taskId) return;
+
+      const room = `task:${taskId}`;
+
+      socket.join(room);
+
+      console.log(`📋 Socket ${socket.id} joined ${room}`);
     });
 
     socket.on("leaveTask", (taskId) => {
-      if (taskId) socket.leave(`task:${taskId}`);
+      if (!taskId) return;
+
+      const room = `task:${taskId}`;
+
+      socket.leave(room);
+
+      console.log(`📋 Socket ${socket.id} left ${room}`);
     });
 
-    // Typing indicator (optional, WhatsApp has this too).
+    // Typing indicator
     socket.on("typing", ({ taskId, userName }) => {
       if (!taskId) return;
-      socket.to(`task:${taskId}`).emit("typing", { userName });
+
+      socket.to(`task:${taskId}`).emit("typing", {
+        userName: userName || "Someone",
+      });
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log(
+        `🟡 Socket disconnected: ${socket.id} | Reason: ${reason}`
+      );
     });
   });
+
+  console.log("✅ Socket.IO initialized");
 
   return io;
 };
 
-// Safe getter: never throws if socket.io somehow isn't initialized
-// (e.g. in a script or test run), so controllers can call it freely.
 const getIO = () => io;
 
-module.exports = { initSocket, getIO };
+module.exports = {
+  initSocket,
+  getIO,
+};
