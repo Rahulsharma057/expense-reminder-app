@@ -47,6 +47,7 @@ import { toast } from "react-toastify";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Navbar from "../../components/Navbar";
 import api from "../../lib/api";
+import { getSocket } from "../../lib/socket";
 
 /* =========================================================
    CONSTANTS
@@ -183,6 +184,7 @@ const getErrorMessage = (error, fallback) => {
 function TasksInner() {
   const fileInputRef = useRef(null);
   const chatBottomRef = useRef(null);
+  const socketRef = useRef(null);
 
   const [user, setUser] = useState(null);
 
@@ -367,6 +369,121 @@ function TasksInner() {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  /* =======================================================
+     REALTIME (socket.io)
+     - joins the user's own room so "newTask" / "notification"
+       events can reach them anywhere in the app
+     - joins/leaves the currently open task's room so chat
+       messages, edits, and status changes appear live without
+       needing to close and reopen the task
+  ======================================================= */
+
+  useEffect(() => {
+    if (!user?._id) return;
+
+    const socket = getSocket();
+    socketRef.current = socket;
+
+    socket.emit("join", user._id);
+
+    const onNewTask = (incomingTask) => {
+      setTasks((previous) => {
+        const exists = previous.some(
+          (task) => task._id === incomingTask._id
+        );
+        if (exists) return previous;
+        return [incomingTask, ...previous];
+      });
+    };
+
+    socket.on("newTask", onNewTask);
+
+    return () => {
+      socket.off("newTask", onNewTask);
+    };
+  }, [user?._id]);
+
+  useEffect(() => {
+    if (!selectedTask?._id || !user?._id) return;
+
+    const socket = getSocket();
+    const taskId = selectedTask._id;
+
+    socket.emit("joinTask", taskId);
+
+    const onNewMessage = (payload) => {
+      if (String(payload.taskId) !== String(taskId)) return;
+
+      setSelectedTask((previous) => {
+        if (!previous) return previous;
+        const exists = previous.messages?.some(
+          (message) => message._id === payload.message._id
+        );
+        if (exists) return previous;
+        return {
+          ...previous,
+          messages: [
+            ...(previous.messages || []),
+            payload.message,
+          ],
+        };
+      });
+
+      setTimeout(() => {
+        chatBottomRef.current?.scrollIntoView({
+          behavior: "smooth",
+        });
+      }, 50);
+    };
+
+    const onMessageEdited = (payload) => {
+      if (String(payload.taskId) !== String(taskId)) return;
+
+      setSelectedTask((previous) => {
+        if (!previous) return previous;
+        return {
+          ...previous,
+          messages: previous.messages.map((message) =>
+            message._id === payload.messageId
+              ? {
+                  ...message,
+                  text: payload.text,
+                  editedAt: payload.editedAt,
+                }
+              : message
+          ),
+        };
+      });
+    };
+
+    const onStatusUpdated = (payload) => {
+      if (String(payload.taskId) !== String(taskId)) return;
+
+      setSelectedTask((previous) =>
+        previous ? { ...previous, status: payload.status } : previous
+      );
+
+      setTasks((previous) =>
+        previous.map((task) =>
+          task._id === payload.taskId
+            ? { ...task, status: payload.status }
+            : task
+        )
+      );
+    };
+
+    socket.on("newMessage", onNewMessage);
+    socket.on("messageEdited", onMessageEdited);
+    socket.on("statusUpdated", onStatusUpdated);
+
+    return () => {
+      socket.emit("leaveTask", taskId);
+      socket.off("newMessage", onNewMessage);
+      socket.off("messageEdited", onMessageEdited);
+      socket.off("statusUpdated", onStatusUpdated);
+    };
+  }, [selectedTask?._id, user?._id]);
 
   /* =======================================================
      OPEN TASK
@@ -663,13 +780,19 @@ function TasksInner() {
         }
       );
 
-      setSelectedTask((previous) => ({
-        ...previous,
-        messages: [
-          ...(previous?.messages || []),
-          response.data,
-        ],
-      }));
+      setSelectedTask((previous) => {
+        const exists = previous?.messages?.some(
+          (message) => message._id === response.data._id
+        );
+        if (exists) return previous;
+        return {
+          ...previous,
+          messages: [
+            ...(previous?.messages || []),
+            response.data,
+          ],
+        };
+      });
 
       setMessageText("");
 
@@ -760,13 +883,19 @@ function TasksInner() {
           }
         );
 
-      setSelectedTask((previous) => ({
-        ...previous,
-        messages: [
-          ...(previous?.messages || []),
-          response.data,
-        ],
-      }));
+      setSelectedTask((previous) => {
+        const exists = previous?.messages?.some(
+          (message) => message._id === response.data._id
+        );
+        if (exists) return previous;
+        return {
+          ...previous,
+          messages: [
+            ...(previous?.messages || []),
+            response.data,
+          ],
+        };
+      });
 
       setMessageText("");
 

@@ -469,6 +469,7 @@ const createTask = async (req, res) => {
           ),
         },
       })
+        .select("-messages")
         .populate("assignedTo", "name email role")
         .populate("assignedBy", "name email role")
         .sort({ createdAt: -1 });
@@ -568,6 +569,9 @@ const createTask = async (req, res) => {
 
 // ======================================================
 // GET MY TASKS
+// PERF FIX: list view no longer needs the embedded messages
+// array — .select("-messages") keeps this fast no matter how
+// long individual chats get.
 // ======================================================
 
 const getMyTasks = async (req, res) => {
@@ -587,6 +591,7 @@ const getMyTasks = async (req, res) => {
         { assignedBy: userId },
       ],
     })
+      .select("-messages")
       .populate(
         "assignedBy",
         "name username email role isActive"
@@ -614,6 +619,7 @@ const getMyTasks = async (req, res) => {
 // ======================================================
 // GET ALL TASKS
 // SUPERADMIN ONLY
+// PERF FIX: same as above — messages excluded from the list.
 // ======================================================
 
 const getAllTasks = async (req, res) => {
@@ -625,6 +631,7 @@ const getAllTasks = async (req, res) => {
     }
 
     const tasks = await Task.find()
+      .select("-messages")
       .populate("assignedTo", "name email role")
       .populate("participants", "name email role")
       .populate("assignedBy", "name email role")
@@ -642,6 +649,8 @@ const getAllTasks = async (req, res) => {
 
 // ======================================================
 // GET TASK BY ID
+// (single task view — messages ARE needed here, so this
+// endpoint is unchanged)
 // ======================================================
 
 const getTaskById = async (req, res) => {
@@ -749,6 +758,7 @@ const updateStatus = async (req, res) => {
         runValidators: true,
       }
     )
+      .select("-messages")
       .populate("assignedTo", "name email role")
       .populate("participants", "name email role")
       .populate("assignedBy", "name email role");
@@ -812,6 +822,13 @@ const updateStatus = async (req, res) => {
 
 // ======================================================
 // ADD TEXT MESSAGE
+// PERF FIX: previously this ran
+//   .populate("messages.sender")
+// on the WHOLE task after every single message, which means
+// Mongoose re-populated every prior message's sender every
+// time — O(n) work per message send, on every send. Since we
+// already have req.user (sender), we build the sender object
+// locally instead and skip populate entirely.
 // ======================================================
 
 const addMessage = async (req, res) => {
@@ -868,8 +885,11 @@ const addMessage = async (req, res) => {
       {
         new: true,
         runValidators: true,
+        // Only return the last message, not the whole array —
+        // keeps the response small on long chats too.
+        projection: { messages: { $slice: -1 } },
       }
-    ).populate("messages.sender", "name role");
+    );
 
     if (!updated) {
       return res.status(404).json({
@@ -878,7 +898,15 @@ const addMessage = async (req, res) => {
     }
 
     const newMessage =
-      updated.messages[updated.messages.length - 1];
+      updated.messages[updated.messages.length - 1].toObject();
+
+    // Build sender info from req.user instead of populating —
+    // avoids re-populating every message already in the array.
+    newMessage.sender = {
+      _id: req.user._id,
+      name: req.user.name,
+      role: req.user.role,
+    };
 
     let recipients = [];
 
@@ -923,6 +951,7 @@ const addMessage = async (req, res) => {
 
 // ======================================================
 // ADD PHOTO MESSAGE
+// Same populate-avoidance fix as addMessage above.
 // ======================================================
 
 const addPhotoMessage = async (req, res) => {
@@ -982,8 +1011,9 @@ const addPhotoMessage = async (req, res) => {
       {
         new: true,
         runValidators: true,
+        projection: { messages: { $slice: -1 } },
       }
-    ).populate("messages.sender", "name role");
+    );
 
     if (!updated) {
       return res.status(404).json({
@@ -992,7 +1022,13 @@ const addPhotoMessage = async (req, res) => {
     }
 
     const newMessage =
-      updated.messages[updated.messages.length - 1];
+      updated.messages[updated.messages.length - 1].toObject();
+
+    newMessage.sender = {
+      _id: req.user._id,
+      name: req.user.name,
+      role: req.user.role,
+    };
 
     const recipients =
       task.mode === "GROUP"
@@ -1034,6 +1070,8 @@ const addPhotoMessage = async (req, res) => {
 
 // ======================================================
 // EDIT MESSAGE
+// (uses task.save() on a single subdocument mutation — this
+// was already fine, no populate-the-whole-array issue here)
 // ======================================================
 
 const editMessage = async (req, res) => {
@@ -1129,6 +1167,11 @@ const editMessage = async (req, res) => {
 
 // ======================================================
 // MARK MESSAGES SEEN
+// PERF FIX: previously `"messages.$[].seenBy"` touched EVERY
+// message subdocument in the array on every single call (and
+// this endpoint is hit every time a task chat is opened). The
+// arrayFilters version below only writes to messages the user
+// hasn't already seen.
 // ======================================================
 
 const markMessagesSeen = async (req, res) => {
@@ -1169,8 +1212,13 @@ const markMessagesSeen = async (req, res) => {
       },
       {
         $addToSet: {
-          "messages.$[].seenBy": req.user._id,
+          "messages.$[elem].seenBy": req.user._id,
         },
+      },
+      {
+        arrayFilters: [
+          { "elem.seenBy": { $ne: req.user._id } },
+        ],
       }
     );
 
