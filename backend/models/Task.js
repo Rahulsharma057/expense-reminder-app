@@ -1,93 +1,47 @@
 const mongoose = require("mongoose");
 
-const messageSchema = new mongoose.Schema(
+// ==========================================================
+// CHECKLIST ITEM
+// ==========================================================
+
+const checklistItemSchema = new mongoose.Schema(
   {
-    sender: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+    text: { type: String, required: true, trim: true },
 
-    senderName: {
-      type: String,
-      required: true,
-    },
+    done: { type: Boolean, default: false },
+    doneBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    doneByName: { type: String, default: "" },
+    doneAt: { type: Date, default: null },
 
-    text: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    // NEW: a checklist item can be handed to one specific person in a
+    // GROUP task, so "who owns this step" is visible at a glance
+    // instead of it being anyone's guess.
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    assignedToName: { type: String, default: "" },
 
-    // WhatsApp-style photo message. text stays required, so a
-    // photo-only message stores a short placeholder (e.g. "📷 Photo").
-    photoUrl: {
-      type: String,
-      default: "",
-    },
-
-    // Set when the sender edits the message (within the 24hr window).
-    editedAt: {
-      type: Date,
-      default: null,
-    },
-
-    seenBy: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
+    order: { type: Number, default: 0 },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
+
+// ==========================================================
+// TASK
+// ==========================================================
 
 const taskSchema = new mongoose.Schema(
   {
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    title: { type: String, required: true, trim: true },
+    description: { type: String, default: "", trim: true },
 
-    description: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    // --------------------------------------------------
-    // INDIVIDUAL / SEPARATE
-    // assignedTo contains one teacher
-    //
-    // GROUP
-    // assignedTo = null
-    // participants contains multiple teachers
-    // --------------------------------------------------
     mode: {
       type: String,
       enum: ["INDIVIDUAL", "SEPARATE", "GROUP"],
       default: "INDIVIDUAL",
     },
 
-    assignedTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    participants: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
-
-    assignedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
+    assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    participants: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
     status: {
       type: String,
@@ -95,46 +49,70 @@ const taskSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    dueDate: {
+    // NEW: priority, used for list sorting and visual flags.
+    priority: {
       type: String,
-      default: "",
+      enum: ["low", "medium", "high"],
+      default: "medium",
     },
 
-    // --------------------------------------------------
-    // RECURRING TASKS
-    // When enabled, completing this task auto-creates the
-    // next occurrence with an advanced dueDate.
-    // --------------------------------------------------
+    dueDate: { type: String, default: "" },
+
+    // NEW: set once a "due tomorrow" reminder has gone out for the
+    // CURRENT dueDate, so the daily cron never sends it twice. Cleared
+    // automatically whenever dueDate changes (see updateTask).
+    reminderSentAt: { type: Date, default: null },
+
     recurrence: {
       enabled: { type: Boolean, default: false },
-      frequency: {
-        type: String,
-        enum: ["daily", "weekly", "monthly", null],
-        default: null,
-      },
+      frequency: { type: String, enum: ["daily", "weekly", "monthly", null], default: null },
     },
 
-    // Points back to the task this one was auto-generated from,
-    // so a recurring chain can be traced.
-    recurredFrom: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Task",
-      default: null,
+    recurredFrom: { type: mongoose.Schema.Types.ObjectId, ref: "Task", default: null },
+
+    // NEW: which template this task was created from, if any. Purely
+    // informational — editing the task never touches the template.
+    createdFromTemplate: { type: mongoose.Schema.Types.ObjectId, ref: "TaskTemplate", default: null },
+
+    checklist: [checklistItemSchema],
+
+    checklistRecurrence: {
+      enabled: { type: Boolean, default: false },
+      frequency: { type: String, enum: ["daily", "weekly", "monthly", null], default: null },
+      lastResetAt: { type: Date, default: null },
     },
 
-    messages: [messageSchema],
+    pinnedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    // Denormalised chat preview — kept up to date by messageController
+    // on every send/delete, so the task list never has to touch the
+    // Message collection at all.
+    lastMessageAt: { type: Date, default: null },
+    lastMessageText: { type: String, default: "" },
+    lastMessageSenderName: { type: String, default: "" },
+    messageCount: { type: Number, default: 0 },
+
+    // messages array is GONE — see models/Message.js. If you're
+    // migrating an existing database, run a one-time script that
+    // reads each task's old `messages` subdocuments and inserts them
+    // into the new Message collection with `task: task._id`, then
+    // drops the field.
   },
-  {
-    timestamps: true,
-  },
+  { timestamps: true }
 );
 
-// --------------------------------------------------
-// Helpful indexes
-// --------------------------------------------------
+// ==========================================================
+// INDEXES
+// ==========================================================
 
+taskSchema.index({ assignedTo: 1, lastMessageAt: -1 });
+taskSchema.index({ participants: 1, lastMessageAt: -1 });
+taskSchema.index({ assignedBy: 1, lastMessageAt: -1 });
 taskSchema.index({ assignedTo: 1, createdAt: -1 });
 taskSchema.index({ participants: 1, createdAt: -1 });
 taskSchema.index({ assignedBy: 1, createdAt: -1 });
+// Used by the due-date reminder cron to find tasks due tomorrow that
+// haven't been reminded yet, without a full collection scan.
+taskSchema.index({ dueDate: 1, status: 1, reminderSentAt: 1 });
 
 module.exports = mongoose.model("Task", taskSchema);

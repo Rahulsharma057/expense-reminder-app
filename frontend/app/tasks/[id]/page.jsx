@@ -20,6 +20,17 @@ import api from "../../../lib/api";
 import { getSocket } from "../../../lib/socket";
 import { getStoredUser } from "../../../lib/auth";
 
+// ============================================================
+// NOTE: this page duplicates the chat that already lives inside
+// app/tasks/page.js. If nothing links to /tasks/[id] anymore,
+// delete this whole file instead of maintaining two chat
+// implementations in parallel — every future backend change (like
+// the Message-collection split below) now has to be applied twice.
+// Keeping this only because it was in the files you pasted; the
+// only change here is the load() fix required for the app to work
+// with the current backend at all.
+// ============================================================
+
 // Photos are stored on Cloudinary, so msg.photoUrl is already a full,
 // ready-to-use https URL — no origin prefix needed.
 
@@ -110,12 +121,23 @@ function TaskChatInner() {
   }, []);
 
   // ---- load task ----
+  // FIXED: GET /tasks/:id no longer returns `messages` (they live in
+  // their own Message collection now) — this needs a second call to
+  // GET /tasks/:id/messages, same as app/tasks/page.js does.
   const load = async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await api.get(`/tasks/${id}`);
-      setTask(res.data);
+      const [taskRes, messagesRes] = await Promise.all([
+        api.get(`/tasks/${id}`),
+        api.get(`/tasks/${id}/messages?limit=30`),
+      ]);
+
+      setTask({
+        ...taskRes.data,
+        messages: messagesRes.data?.messages || [],
+      });
+
       api.patch(`/tasks/${id}/messages/seen`).catch(() => {});
     } catch (err) {
       setError(err?.response?.data?.message || "Could not load this task.");

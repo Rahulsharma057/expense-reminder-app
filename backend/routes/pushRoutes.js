@@ -1,10 +1,16 @@
 const express = require("express");
 const router = express.Router();
-const { getVapidPublicKey, subscribe, unsubscribe } = require("../controllers/pushController");
+
+const { getPublicKey, subscribe, unsubscribe } = require("../controllers/pushController");
 const { protect } = require("../middleware/auth");
 
-router.get("/vapid-public-key", getVapidPublicKey);
-router.post("/subscribe", protect, subscribe);
-router.post("/unsubscribe", protect, unsubscribe);
+// Public key needs no auth — it's not a secret, the frontend needs it
+// before the user necessarily has a fresh token in some flows.
+router.get("/public-key", getPublicKey);
+
+router.use(protect);
+
+router.post("/subscribe", subscribe);
+router.post("/unsubscribe", unsubscribe);
 
 module.exports = router;

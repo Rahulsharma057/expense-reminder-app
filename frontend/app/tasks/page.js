@@ -1,45 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  Alert,
-  Avatar,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  FormControl,
-  IconButton,
-  InputAdornment,
-  MenuItem,
-  Paper,
-  Select,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
+  Alert, Avatar, AvatarGroup, Badge, Box, Button, Checkbox, Chip,
+  CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, FormControl, IconButton, LinearProgress, Menu,
+  MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography,
 } from "@mui/material";
 
 import {
-  Add,
-  ArrowBack,
-  AttachFile,
-  Check,
-  CheckCircle,
-  Delete,
-  Edit,
-  Groups,
-  Image as ImageIcon,
-  Refresh,
-  Send,
-  TaskAlt,
-  AccessTime,
+  Add, ArrowBack, Check, CheckCircle, Close, Delete, Done, DoneAll,
+  Download, Edit, ExpandLess, ExpandMore, Groups, Image as ImageIcon,
+  MoreVert, PushPin, PushPinOutlined, Refresh, Repeat, Send, TaskAlt,
+  AccessTime, PlaylistAddCheck,
 } from "@mui/icons-material";
 
 import { toast } from "react-toastify";
@@ -53,53 +27,34 @@ import { getSocket } from "../../lib/socket";
    CONSTANTS
 ========================================================= */
 
+const PURPLE = "#7C3AED";
+const PURPLE_DARK = "#6D28D9";
+
 const STATUS_OPTIONS = [
-  {
-    value: "pending",
-    label: "Pending",
-  },
-  {
-    value: "in-progress",
-    label: "In Progress",
-  },
-  {
-    value: "completed",
-    label: "Completed",
-  },
+  { value: "pending", label: "Pending" },
+  { value: "in-progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
 ];
 
 const MODE_OPTIONS = [
-  {
-    value: "INDIVIDUAL",
-    label: "Individual",
-    description: "Assign task to one user",
-  },
-  {
-    value: "SEPARATE",
-    label: "Separate",
-    description: "Create separate task for each user",
-  },
-  {
-    value: "GROUP",
-    label: "Group",
-    description: "One shared task and chat",
-  },
+  { value: "INDIVIDUAL", label: "Individual", description: "Assign to one person" },
+  { value: "SEPARATE", label: "Separate", description: "A private copy for each person" },
+  { value: "GROUP", label: "Group", description: "One shared task and one shared chat" },
 ];
 
 const RECURRENCE_OPTIONS = [
-  {
-    value: "daily",
-    label: "Daily",
-  },
-  {
-    value: "weekly",
-    label: "Weekly",
-  },
-  {
-    value: "monthly",
-    label: "Monthly",
-  },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
 ];
+
+const PRIORITY_OPTIONS = [
+  { value: "low", label: "Low", color: "#6B7280" },
+  { value: "medium", label: "Medium", color: "#B45309" },
+  { value: "high", label: "High", color: "#DC2626" },
+];
+
+const PALETTE = ["#0ea5e9", "#16a34a", "#f97316", "#db2777", "#7c3aed", "#0d9488", "#ca8a04"];
 
 /* =========================================================
    HELPERS
@@ -107,64 +62,346 @@ const RECURRENCE_OPTIONS = [
 
 const getId = (value) => {
   if (!value) return "";
-
-  if (typeof value === "object") {
-    return String(value._id || value.id || "");
-  }
-
+  if (typeof value === "object") return String(value._id || value.id || "");
   return String(value);
+};
+
+const sameId = (a, b) => {
+  const x = getId(a);
+  const y = getId(b);
+  return Boolean(x) && x === y;
 };
 
 const getUserName = (user) => {
   if (!user) return "User";
-
-  if (typeof user === "string") {
-    return user;
-  }
-
+  if (typeof user === "string") return user;
   return user.name || user.username || user.email || "User";
 };
 
-const getInitial = (user) => {
-  const name = getUserName(user);
+const getInitial = (user) =>
+  getUserName(user).trim().charAt(0).toUpperCase() || "U";
 
-  return name.trim().charAt(0).toUpperCase() || "U";
+const colorFor = (id) => {
+  const str = String(id || "");
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  }
+  return PALETTE[hash % PALETTE.length];
 };
+
+const priorityMeta = (priority) =>
+  PRIORITY_OPTIONS.find((option) => option.value === priority) || PRIORITY_OPTIONS[1];
 
 const formatDate = (date) => {
   if (!date) return "No due date";
-
   const d = new Date(date);
-
-  if (Number.isNaN(d.getTime())) {
-    return date;
-  }
-
-  return d.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 };
 
 const formatTime = (date) => {
   if (!date) return "";
-
   const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+};
 
-  if (Number.isNaN(d.getTime())) {
-    return "";
+// Date separator label for the chat ("Today", "Yesterday", "12 Mar 2026").
+const dayLabel = (date) => {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const that = new Date(d);
+  that.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - that) / 86400000);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return formatDate(d);
+};
+
+const getErrorMessage = (error, fallback) =>
+  error?.response?.data?.message || error?.message || fallback;
+
+/*
+  The whole point of "chat partner name": for an INDIVIDUAL/SEPARATE
+  task, the person you're talking to is whoever ISN'T you — the
+  assignee if you created it, the creator if it was assigned to you.
+*/
+const getChatTitle = (task, myId) => {
+  if (!task) return "";
+
+  if (task.mode === "GROUP") {
+    const names = (task.participants || []).map(getUserName);
+    return names.length ? names.join(", ") : "Group task";
   }
 
-  return d.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  if (sameId(task.assignedBy, myId)) {
+    return getUserName(task.assignedTo);
+  }
+
+  return getUserName(task.assignedBy);
 };
 
-const getErrorMessage = (error, fallback) => {
-  return error?.response?.data?.message || error?.message || fallback;
+/*
+  Everyone who should have seen a message: participants + the creator,
+  minus the sender. If they're all in seenBy, the sender gets a blue
+  double tick.
+*/
+const getChatMemberIds = (task) => {
+  if (!task) return [];
+  const ids =
+    task.mode === "GROUP"
+      ? (task.participants || []).map(getId)
+      : [getId(task.assignedTo)];
+  return [...new Set([...ids, getId(task.assignedBy)].filter(Boolean))];
 };
+
+const downloadImage = async (url, filename) => {
+  try {
+    const response = await fetch(url, { mode: "cors" });
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = filename || "photo.jpg";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(href);
+  } catch {
+    // Cloudinary CORS can block the fetch; opening the URL still lets
+    // the user save it manually.
+    window.open(url, "_blank");
+  }
+};
+
+/* =========================================================
+   MESSAGE TICKS
+========================================================= */
+
+function MessageTicks({ message, memberIds, myId }) {
+  const others = memberIds.filter((id) => id !== getId(myId));
+  const seen = (message.seenBy || []).map(getId);
+  const seenByAll = others.length > 0 && others.every((id) => seen.includes(id));
+
+  if (message.pending) {
+    return <AccessTime sx={{ fontSize: 12, opacity: 0.6 }} />;
+  }
+
+  if (seenByAll) {
+    // Blue double tick = everyone has read it.
+    return <DoneAll sx={{ fontSize: 14, color: "#38BDF8" }} />;
+  }
+
+  if (seen.length > 1) {
+    // Grey double tick = at least one other person read it.
+    return <DoneAll sx={{ fontSize: 14, opacity: 0.75 }} />;
+  }
+
+  // Single tick = delivered to the server only.
+  return <Done sx={{ fontSize: 14, opacity: 0.7 }} />;
+}
+
+/* =========================================================
+   CHECKLIST PANEL
+========================================================= */
+
+function ChecklistPanel({
+  task, open, onToggleOpen, onAdd, onToggleItem, onDeleteItem, onSetRecurrence,
+}) {
+  const [newItem, setNewItem] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+
+  const items = task?.checklist || [];
+  const completed = items.filter((item) => item.done).length;
+  const total = items.length;
+  const percent = total ? Math.round((completed / total) * 100) : 0;
+  const recurrence = task?.checklistRecurrence;
+
+  const submit = async () => {
+    if (!newItem.trim() || adding) return;
+    setAdding(true);
+    await onAdd(newItem.trim());
+    setNewItem("");
+    setAdding(false);
+  };
+
+  return (
+    <Box sx={{ borderBottom: "1px solid #EEEAF4", bgcolor: "#FFFFFF" }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        sx={{ px: { xs: 1.5, sm: 2 }, py: 1, cursor: "pointer" }}
+        onClick={onToggleOpen}
+      >
+        <PlaylistAddCheck sx={{ fontSize: 19, color: PURPLE }} />
+
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" alignItems="center" spacing={0.8}>
+            <Typography sx={{ fontSize: 12.5, fontWeight: 800 }}>
+              Checklist
+            </Typography>
+
+            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: total && completed === total ? "#15803D" : "#7E7789" }}>
+              {completed}/{total || 0} done
+            </Typography>
+
+            {recurrence?.enabled && (
+              <Chip
+                size="small"
+                icon={<Repeat sx={{ fontSize: 12 }} />}
+                label={recurrence.frequency}
+                sx={{ height: 18, fontSize: 9.5, fontWeight: 700, borderRadius: 1, textTransform: "capitalize" }}
+              />
+            )}
+          </Stack>
+
+          {total > 0 && (
+            <LinearProgress
+              variant="determinate"
+              value={percent}
+              sx={{
+                mt: 0.6, height: 5, borderRadius: 5, bgcolor: "#F0EBFA",
+                "& .MuiLinearProgress-bar": {
+                  borderRadius: 5,
+                  bgcolor: completed === total ? "#16A34A" : PURPLE,
+                },
+              }}
+            />
+          )}
+        </Box>
+
+        <IconButton
+          size="small"
+          onClick={(event) => {
+            event.stopPropagation();
+            setMenuAnchor(event.currentTarget);
+          }}
+        >
+          <MoreVert sx={{ fontSize: 17 }} />
+        </IconButton>
+
+        <IconButton size="small">
+          {open ? <ExpandLess sx={{ fontSize: 19 }} /> : <ExpandMore sx={{ fontSize: 19 }} />}
+        </IconButton>
+      </Stack>
+
+      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
+        <Typography sx={{ px: 2, pt: 1, pb: 0.5, fontSize: 10.5, fontWeight: 800, color: "#948DA0" }}>
+          RESET CHECKLIST EVERY
+        </Typography>
+
+        {RECURRENCE_OPTIONS.map((option) => (
+          <MenuItem
+            key={option.value}
+            selected={recurrence?.enabled && recurrence.frequency === option.value}
+            onClick={() => {
+              onSetRecurrence({ enabled: true, frequency: option.value });
+              setMenuAnchor(null);
+            }}
+            sx={{ fontSize: 13 }}
+          >
+            {option.label}
+          </MenuItem>
+        ))}
+
+        <Divider />
+
+        <MenuItem
+          selected={!recurrence?.enabled}
+          onClick={() => {
+            onSetRecurrence({ enabled: false, frequency: null });
+            setMenuAnchor(null);
+          }}
+          sx={{ fontSize: 13 }}
+        >
+          Don&apos;t repeat
+        </MenuItem>
+      </Menu>
+
+      <Collapse in={open} unmountOnExit>
+        <Box sx={{ px: { xs: 1.5, sm: 2 }, pb: 1.5, maxHeight: 230, overflowY: "auto" }}>
+          {items.map((item) => (
+            <Stack
+              key={item._id}
+              direction="row"
+              alignItems="flex-start"
+              spacing={0.5}
+              sx={{ py: 0.2 }}
+            >
+              <Checkbox
+                size="small"
+                checked={Boolean(item.done)}
+                onChange={() => onToggleItem(item, !item.done)}
+                sx={{ p: 0.5, color: "#C6BFD4", "&.Mui-checked": { color: PURPLE } }}
+              />
+
+              <Box sx={{ flex: 1, minWidth: 0, pt: 0.5 }}>
+                <Typography
+                  sx={{
+                    fontSize: 12.5,
+                    lineHeight: 1.4,
+                    wordBreak: "break-word",
+                    color: item.done ? "#9A94A3" : "#34303C",
+                    textDecoration: item.done ? "line-through" : "none",
+                  }}
+                >
+                  {item.text}
+                </Typography>
+
+                {item.done && item.doneByName && (
+                  <Typography sx={{ fontSize: 9.5, color: "#A49DB0" }}>
+                    {item.doneByName} • {formatTime(item.doneAt)}
+                  </Typography>
+                )}
+              </Box>
+
+              <IconButton size="small" onClick={() => onDeleteItem(item)} sx={{ p: 0.5 }}>
+                <Close sx={{ fontSize: 14, color: "#B9B2C4" }} />
+              </IconButton>
+            </Stack>
+          ))}
+
+          <Stack direction="row" spacing={0.8} sx={{ mt: items.length ? 1 : 0.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Add a checklist item..."
+              value={newItem}
+              onChange={(event) => setNewItem(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+              sx={{
+                "& .MuiOutlinedInput-root": {
+                  borderRadius: 2, bgcolor: "#FAF9FC", fontSize: 12.5,
+                },
+              }}
+            />
+
+            <IconButton
+              onClick={submit}
+              disabled={!newItem.trim() || adding}
+              sx={{
+                width: 36, height: 36, bgcolor: "#F3EEFF", color: PURPLE,
+                "&:hover": { bgcolor: "#E9E0FF" },
+              }}
+            >
+              <Add sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Stack>
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
 
 /* =========================================================
    PAGE
@@ -173,7 +410,9 @@ const getErrorMessage = (error, fallback) => {
 function TasksInner() {
   const fileInputRef = useRef(null);
   const chatBottomRef = useRef(null);
-  const socketRef = useRef(null);
+  const chatScrollRef = useRef(null);
+  const selectedIdRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   const [user, setUser] = useState(null);
 
@@ -184,53 +423,53 @@ function TasksInner() {
   const [usersLoading, setUsersLoading] = useState(false);
 
   const [selectedTask, setSelectedTask] = useState(null);
-
   const [taskLoading, setTaskLoading] = useState(false);
 
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
-  /* =======================================================
-     CREATE TASK STATES
-  ======================================================= */
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [checklistOpen, setChecklistOpen] = useState(false);
+
+  // NEW: who's typing right now in the open chat (null = nobody).
+  const [typingUser, setTypingUser] = useState(null);
+
+  /* ---------------- create task ---------------- */
 
   const [createOpen, setCreateOpen] = useState(false);
-
   const [mode, setMode] = useState("INDIVIDUAL");
-
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-
   const [assignedTo, setAssignedTo] = useState("");
-
   const [assignedToList, setAssignedToList] = useState([]);
-
   const [dueDate, setDueDate] = useState("");
-
+  const [priority, setPriority] = useState("medium");
   const [recurrenceEnabled, setRecurrenceEnabled] = useState(false);
-
   const [recurrenceFrequency, setRecurrenceFrequency] = useState("daily");
-
+  const [newChecklist, setNewChecklist] = useState([]);
+  const [checklistDraft, setChecklistDraft] = useState("");
+  const [checklistRepeat, setChecklistRepeat] = useState("");
   const [creating, setCreating] = useState(false);
 
-  /* =======================================================
-     MESSAGE STATES
-  ======================================================= */
+  /* ---------------- messages ---------------- */
 
   const [messageText, setMessageText] = useState("");
-
   const [sendingMessage, setSendingMessage] = useState(false);
-
   const [editingMessage, setEditingMessage] = useState(null);
-
   const [editText, setEditText] = useState("");
+  const [messageMenu, setMessageMenu] = useState(null);
+  const [viewerPhoto, setViewerPhoto] = useState(null);
 
-  /* =======================================================
-     DELETE
-  ======================================================= */
+  /* ---------------- delete ---------------- */
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-
   const [deleting, setDeleting] = useState(false);
+
+  const myId = getId(user?._id);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedTask?._id || null;
+  }, [selectedTask?._id]);
 
   /* =======================================================
      CURRENT USER
@@ -238,268 +477,349 @@ function TasksInner() {
 
   useEffect(() => {
     try {
-      const storedUser = localStorage.getItem("user");
-
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-      }
+      const stored = localStorage.getItem("user");
+      if (stored) setUser(JSON.parse(stored));
     } catch (error) {
       console.error("User parse error:", error);
     }
   }, []);
 
   /* =======================================================
-     LOAD TASKS
+     LOAD TASKS / USERS
   ======================================================= */
 
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     try {
       setLoading(true);
-
       const response = await api.get("/tasks/mine");
-
+      // v3 backend returns { tasks, page, limit, total, hasMore }
+      // instead of a bare array — this already handles both shapes.
       const data = Array.isArray(response.data)
         ? response.data
         : response.data?.tasks || [];
-
       setTasks(data);
     } catch (error) {
-      console.error("Load tasks error:", error);
-
       toast.error(getErrorMessage(error, "Could not load tasks"));
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadTasks();
   }, []);
 
-  /* =======================================================
-     LOAD USERS / MEMBERS
-  ======================================================= */
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setUsersLoading(true);
-
       const response = await api.get("/users");
-
       const data = Array.isArray(response.data)
         ? response.data
         : response.data?.users || response.data?.data || [];
 
-      const activeMembers = data.filter(
-        (item) =>
-          item?.isActive !== false &&
-          String(item?.role || "").toLowerCase() === "member",
+      // Everyone active except me — this is who I can assign to, and it
+      // now includes the superadmin so anyone can start a chat with them.
+      setUsers(
+        data.filter(
+          (item) => item?.isActive !== false && !sameId(item?._id, myId)
+        )
       );
-
-      setUsers(activeMembers);
     } catch (error) {
-      console.error("Load users error:", error);
-
       toast.error(getErrorMessage(error, "Could not load users"));
     } finally {
       setUsersLoading(false);
     }
-  };
+  }, [myId]);
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    if (myId) loadUsers();
+  }, [myId, loadUsers]);
 
   /* =======================================================
-     REALTIME (socket.io)
-     - joins the user's own room so "newTask" / "notification"
-       events can reach them anywhere in the app
-     - joins/leaves the currently open task's room so chat
-       messages, edits, and status changes appear live without
-       needing to close and reopen the task
+     REALTIME — user room
   ======================================================= */
-useEffect(() => {
-  if (!user?._id) return;
 
-  const socket = getSocket();
-
-  socketRef.current = socket;
-
-  const userId = String(user._id);
-
-  const joinUserRoom = () => {
-    console.log("👤 Joining user socket room:", userId);
-
-    socket.emit("join", userId);
-  };
-
-  const onNewTask = (incomingTask) => {
-    console.log("📋 New task received:", incomingTask);
-
-    if (!incomingTask?._id) return;
-
-    setTasks((previous) => {
-      const exists = previous.some(
-        (task) => String(task._id) === String(incomingTask._id)
-      );
-
-      if (exists) {
-        return previous.map((task) =>
-          String(task._id) === String(incomingTask._id)
-            ? { ...task, ...incomingTask }
-            : task
-        );
-      }
-
-      return [incomingTask, ...previous];
-    });
-
-    toast.success("New task received");
-  };
-
-  const onNotification = (payload) => {
-    console.log("🔔 Socket notification:", payload);
-
-    if (payload?.task) {
-      console.log("📋 Task notification received");
-    }
-  };
-
-  // Socket already connected
-  if (socket.connected) {
-    joinUserRoom();
-  }
-
-  // Socket connects/reconnects
-  socket.on("connect", joinUserRoom);
-
-  // New task assigned
-  socket.on("newTask", onNewTask);
-
-  // General notifications
-  socket.on("notification", onNotification);
-
-  console.log("🔌 Task realtime listener initialized");
-
-  return () => {
-    socket.off("connect", joinUserRoom);
-    socket.off("newTask", onNewTask);
-    socket.off("notification", onNotification);
-  };
-}, [user?._id]);
   useEffect(() => {
-    if (!selectedTask?._id || !user?._id) return;
+    if (!myId) return;
 
     const socket = getSocket();
-    const taskId = selectedTask._id;
+    socket.emit("join", myId);
 
+    const onNewTask = (incoming) => {
+      setTasks((previous) =>
+        previous.some((task) => task._id === incoming._id)
+          ? previous
+          : [incoming, ...previous]
+      );
+    };
+
+    const onTaskDeleted = ({ taskId }) => {
+      setTasks((previous) => previous.filter((task) => task._id !== taskId));
+      if (selectedIdRef.current === taskId) setSelectedTask(null);
+    };
+
+    // Keeps the list preview line ("Ravi: on my way") live even when
+    // that chat isn't open.
+    const onNotification = (payload) => {
+      if (payload?.type !== "NEW_MESSAGE" || !payload?.task) return;
+      setTasks((previous) =>
+        previous.map((task) =>
+          sameId(task._id, payload.task)
+            ? {
+                ...task,
+                lastMessageText: payload.message || task.lastMessageText,
+                lastMessageAt: payload.createdAt || new Date().toISOString(),
+                unread: selectedIdRef.current !== task._id,
+              }
+            : task
+        )
+      );
+    };
+
+    socket.on("newTask", onNewTask);
+    socket.on("taskDeleted", onTaskDeleted);
+    socket.on("notification", onNotification);
+
+    return () => {
+      socket.off("newTask", onNewTask);
+      socket.off("taskDeleted", onTaskDeleted);
+      socket.off("notification", onNotification);
+    };
+  }, [myId]);
+
+  /* =======================================================
+     REALTIME — task room
+  ======================================================= */
+
+  useEffect(() => {
+    const taskId = selectedTask?._id;
+    if (!taskId || !myId) return;
+
+    const socket = getSocket();
     socket.emit("joinTask", taskId);
 
+    const forThisTask = (payload) => String(payload?.taskId) === String(taskId);
+
     const onNewMessage = (payload) => {
-      if (String(payload.taskId) !== String(taskId)) return;
+      if (!forThisTask(payload)) return;
 
       setSelectedTask((previous) => {
         if (!previous) return previous;
-        const exists = previous.messages?.some(
-          (message) => message._id === payload.message._id,
-        );
-        if (exists) return previous;
+        if (previous.messages?.some((m) => m._id === payload.message._id)) {
+          return previous;
+        }
         return {
           ...previous,
           messages: [...(previous.messages || []), payload.message],
         };
       });
 
-      setTimeout(() => {
-        chatBottomRef.current?.scrollIntoView({
-          behavior: "smooth",
-        });
-      }, 50);
+      // Someone else's message and I'm looking at the chat → mark seen
+      // immediately so THEIR ticks turn blue.
+      if (!sameId(payload.message.sender, myId)) {
+        api.patch(`/tasks/${taskId}/messages/seen`).catch(() => {});
+      }
+
+      setTypingUser(null);
+
+      requestAnimationFrame(() =>
+        chatBottomRef.current?.scrollIntoView({ behavior: "smooth" })
+      );
     };
 
     const onMessageEdited = (payload) => {
-      if (String(payload.taskId) !== String(taskId)) return;
+      if (!forThisTask(payload)) return;
+      setSelectedTask((previous) =>
+        previous
+          ? {
+              ...previous,
+              messages: previous.messages.map((m) =>
+                m._id === payload.messageId
+                  ? { ...m, text: payload.text, editedAt: payload.editedAt }
+                  : m
+              ),
+            }
+          : previous
+      );
+    };
 
-      setSelectedTask((previous) => {
-        if (!previous) return previous;
-        return {
-          ...previous,
-          messages: previous.messages.map((message) =>
-            message._id === payload.messageId
-              ? {
-                  ...message,
-                  text: payload.text,
-                  editedAt: payload.editedAt,
-                }
-              : message,
-          ),
-        };
-      });
+    const onMessageDeleted = (payload) => {
+      if (!forThisTask(payload)) return;
+      setSelectedTask((previous) =>
+        previous
+          ? {
+              ...previous,
+              messages: previous.messages.map((m) =>
+                m._id === payload.messageId
+                  ? { ...m, deleted: true, photoUrl: "", text: "This message was deleted" }
+                  : m
+              ),
+            }
+          : previous
+      );
+    };
+
+    // This is what flips MY ticks from grey to blue.
+    const onMessagesSeen = (payload) => {
+      if (!forThisTask(payload)) return;
+      setSelectedTask((previous) =>
+        previous
+          ? {
+              ...previous,
+              messages: previous.messages.map((m) =>
+                (m.seenBy || []).map(getId).includes(getId(payload.userId))
+                  ? m
+                  : { ...m, seenBy: [...(m.seenBy || []), payload.userId] }
+              ),
+            }
+          : previous
+      );
     };
 
     const onStatusUpdated = (payload) => {
-      if (String(payload.taskId) !== String(taskId)) return;
-
+      if (!forThisTask(payload)) return;
       setSelectedTask((previous) =>
-        previous ? { ...previous, status: payload.status } : previous,
+        previous ? { ...previous, status: payload.status } : previous
       );
-
       setTasks((previous) =>
         previous.map((task) =>
-          task._id === payload.taskId
-            ? { ...task, status: payload.status }
-            : task,
-        ),
+          task._id === payload.taskId ? { ...task, status: payload.status } : task
+        )
       );
+    };
+
+    const onChecklistAdded = (payload) => {
+      if (!forThisTask(payload)) return;
+      setSelectedTask((previous) => {
+        if (!previous) return previous;
+        if (previous.checklist?.some((item) => item._id === payload.item._id)) {
+          return previous;
+        }
+        return { ...previous, checklist: [...(previous.checklist || []), payload.item] };
+      });
+    };
+
+    const onChecklistUpdated = (payload) => {
+      if (!forThisTask(payload)) return;
+      setSelectedTask((previous) =>
+        previous
+          ? {
+              ...previous,
+              checklist: (previous.checklist || []).map((item) =>
+                item._id === payload.item._id ? payload.item : item
+              ),
+            }
+          : previous
+      );
+    };
+
+    const onChecklistDeleted = (payload) => {
+      if (!forThisTask(payload)) return;
+      setSelectedTask((previous) =>
+        previous
+          ? {
+              ...previous,
+              checklist: (previous.checklist || []).filter(
+                (item) => item._id !== payload.itemId
+              ),
+            }
+          : previous
+      );
+    };
+
+    const onChecklistReset = (payload) => {
+      if (!forThisTask(payload)) return;
+      setSelectedTask((previous) =>
+        previous
+          ? {
+              ...previous,
+              checklist: (previous.checklist || []).map((item) => ({
+                ...item, done: false, doneBy: null, doneByName: "", doneAt: null,
+              })),
+            }
+          : previous
+      );
+    };
+
+    // NEW: typing indicator. Backend just relays { userName } to
+    // everyone else in the room — it never echoes back to the sender.
+    const onTyping = ({ userName }) => {
+      setTypingUser(userName);
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => setTypingUser(null), 2500);
     };
 
     socket.on("newMessage", onNewMessage);
     socket.on("messageEdited", onMessageEdited);
+    socket.on("messageDeleted", onMessageDeleted);
+    socket.on("messagesSeen", onMessagesSeen);
     socket.on("statusUpdated", onStatusUpdated);
+    socket.on("checklistItemAdded", onChecklistAdded);
+    socket.on("checklistItemUpdated", onChecklistUpdated);
+    socket.on("checklistItemDeleted", onChecklistDeleted);
+    socket.on("checklistReset", onChecklistReset);
+    socket.on("typing", onTyping);
 
     return () => {
       socket.emit("leaveTask", taskId);
       socket.off("newMessage", onNewMessage);
       socket.off("messageEdited", onMessageEdited);
+      socket.off("messageDeleted", onMessageDeleted);
+      socket.off("messagesSeen", onMessagesSeen);
       socket.off("statusUpdated", onStatusUpdated);
+      socket.off("checklistItemAdded", onChecklistAdded);
+      socket.off("checklistItemUpdated", onChecklistUpdated);
+      socket.off("checklistItemDeleted", onChecklistDeleted);
+      socket.off("checklistReset", onChecklistReset);
+      socket.off("typing", onTyping);
+      clearTimeout(typingTimeoutRef.current);
+      setTypingUser(null);
     };
-  }, [selectedTask?._id, user?._id]);
+  }, [selectedTask?._id, myId]);
 
   /* =======================================================
-     OPEN TASK
+     OPEN / CLOSE TASK
+
+     IMPORTANT (v3 backend change): GET /tasks/:id no longer returns
+     `messages` — that endpoint is now pure metadata, since messages
+     live in their own Message collection. Opening a task now needs
+     TWO calls: the task itself, and the first page of its messages.
   ======================================================= */
 
   const openTask = async (task) => {
     try {
       setTaskLoading(true);
+      setChecklistOpen(false);
+      setTypingUser(null);
 
-      const response = await api.get(`/tasks/${task._id}`);
+      const [taskRes, messagesRes] = await Promise.all([
+        api.get(`/tasks/${task._id}`),
+        api.get(`/tasks/${task._id}/messages?limit=30`),
+      ]);
 
-      setSelectedTask(response.data);
+      setSelectedTask({
+        ...taskRes.data,
+        messages: messagesRes.data?.messages || [],
+      });
+      setHasMoreMessages(Boolean(messagesRes.data?.hasMore));
 
-      try {
-        await api.patch(`/tasks/${task._id}/messages/seen`);
-      } catch (seenError) {
-        console.error("Mark messages seen error:", seenError);
-      }
+      setTasks((previous) =>
+        previous.map((item) =>
+          item._id === task._id ? { ...item, unread: false } : item
+        )
+      );
 
-      setTimeout(() => {
-        chatBottomRef.current?.scrollIntoView({
-          behavior: "smooth",
-        });
-      }, 100);
+      api.patch(`/tasks/${task._id}/messages/seen`).catch(() => {});
+
+      requestAnimationFrame(() =>
+        chatBottomRef.current?.scrollIntoView({ block: "end" })
+      );
     } catch (error) {
-      console.error("Open task error:", error);
-
       toast.error(getErrorMessage(error, "Could not open task"));
     } finally {
       setTaskLoading(false);
     }
   };
-
-  /* =======================================================
-     CLOSE TASK / MOBILE BACK
-  ======================================================= */
 
   const closeTask = () => {
     setSelectedTask(null);
@@ -507,38 +827,83 @@ useEffect(() => {
     setEditText("");
     setMessageText("");
     setDeleteDialogOpen(false);
+    setHasMoreMessages(false);
+    setTypingUser(null);
   };
 
   /* =======================================================
-     FILTER
+     LAZY LOAD OLDER MESSAGES
+     (unchanged — this endpoint's shape already matched the new
+     backend: GET /tasks/:id/messages?before=&limit=)
+  ======================================================= */
+
+  const loadOlderMessages = async () => {
+    if (!selectedTask?._id || loadingOlder || !hasMoreMessages) return;
+
+    const oldest = selectedTask.messages?.[0];
+    if (!oldest) return;
+
+    const container = chatScrollRef.current;
+    const previousHeight = container?.scrollHeight || 0;
+
+    try {
+      setLoadingOlder(true);
+
+      const response = await api.get(
+        `/tasks/${selectedTask._id}/messages?before=${encodeURIComponent(
+          oldest.createdAt
+        )}&limit=30`
+      );
+
+      const older = response.data?.messages || [];
+
+      setSelectedTask((previous) => {
+        if (!previous) return previous;
+        const existing = new Set((previous.messages || []).map((m) => m._id));
+        const merged = older.filter((m) => !existing.has(m._id));
+        return { ...previous, messages: [...merged, ...previous.messages] };
+      });
+
+      setHasMoreMessages(Boolean(response.data?.hasMore));
+
+      // Keep the reading position steady instead of jumping to the top.
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight - previousHeight;
+        }
+      });
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not load older messages"));
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+
+  const onChatScroll = (event) => {
+    if (event.currentTarget.scrollTop < 60) loadOlderMessages();
+  };
+
+  /* =======================================================
+     FILTER / COUNTS
   ======================================================= */
 
   const filteredTasks = useMemo(() => {
-    if (activeFilter === "all") {
-      return tasks;
-    }
-
+    if (activeFilter === "all") return tasks;
     return tasks.filter((task) => task.status === activeFilter);
   }, [tasks, activeFilter]);
 
-  /* =======================================================
-     COUNTS
-  ======================================================= */
-
-  const counts = useMemo(() => {
-    return {
+  const counts = useMemo(
+    () => ({
       all: tasks.length,
-
       pending: tasks.filter((task) => task.status === "pending").length,
-
       inProgress: tasks.filter((task) => task.status === "in-progress").length,
-
       completed: tasks.filter((task) => task.status === "completed").length,
-    };
-  }, [tasks]);
+    }),
+    [tasks]
+  );
 
   /* =======================================================
-     RESET CREATE FORM
+     CREATE TASK
   ======================================================= */
 
   const resetCreateForm = () => {
@@ -548,31 +913,19 @@ useEffect(() => {
     setAssignedTo("");
     setAssignedToList([]);
     setDueDate("");
+    setPriority("medium");
     setRecurrenceEnabled(false);
     setRecurrenceFrequency("daily");
+    setNewChecklist([]);
+    setChecklistDraft("");
+    setChecklistRepeat("");
   };
 
-  /* =======================================================
-     CREATE TASK
-  ======================================================= */
-
   const handleCreateTask = async () => {
-    if (!title.trim()) {
-      toast.error("Task title is required");
-      return;
-    }
-
-    if (mode === "INDIVIDUAL" && !assignedTo) {
-      toast.error("Please select a user");
-      return;
-    }
-
-    if (
-      (mode === "SEPARATE" || mode === "GROUP") &&
-      assignedToList.length < 2
-    ) {
-      toast.error("Please select at least two users");
-      return;
+    if (!title.trim()) return toast.error("Task title is required");
+    if (mode === "INDIVIDUAL" && !assignedTo) return toast.error("Please select a user");
+    if (mode !== "INDIVIDUAL" && assignedToList.length < 2) {
+      return toast.error("Please select at least two users");
     }
 
     try {
@@ -583,38 +936,31 @@ useEffect(() => {
         description: description.trim(),
         mode,
         dueDate,
-
+        priority,
         recurrence: {
           enabled: recurrenceEnabled,
           frequency: recurrenceEnabled ? recurrenceFrequency : null,
         },
+        checklist: newChecklist.map((text) => ({ text })),
+        checklistRecurrence: checklistRepeat
+          ? { enabled: true, frequency: checklistRepeat }
+          : { enabled: false, frequency: null },
       };
 
-      if (mode === "INDIVIDUAL") {
-        payload.assignedTo = assignedTo;
-      } else {
-        payload.assignedToList = assignedToList;
-      }
+      if (mode === "INDIVIDUAL") payload.assignedTo = assignedTo;
+      else payload.assignedToList = assignedToList;
 
       const response = await api.post("/tasks", payload);
 
-      toast.success("Task created successfully");
-
+      toast.success("Task created");
       setCreateOpen(false);
       resetCreateForm();
-
       await loadTasks();
 
-      if (mode === "INDIVIDUAL" || mode === "GROUP") {
-        const createdTask = response.data;
-
-        if (createdTask?._id) {
-          setSelectedTask(createdTask);
-        }
+      if (mode !== "SEPARATE" && response.data?._id) {
+        openTask(response.data);
       }
     } catch (error) {
-      console.error("Create task error:", error);
-
       toast.error(getErrorMessage(error, "Could not create task"));
     } finally {
       setCreating(false);
@@ -622,210 +968,267 @@ useEffect(() => {
   };
 
   /* =======================================================
-     UPDATE STATUS
+     STATUS / PIN
   ======================================================= */
 
   const updateTaskStatus = async (taskId, status) => {
+    const previousStatus = selectedTask?.status;
+
+    setSelectedTask((previous) =>
+      previous?._id === taskId ? { ...previous, status } : previous
+    );
+    setTasks((previous) =>
+      previous.map((task) => (task._id === taskId ? { ...task, status } : task))
+    );
+
     try {
-      const response = await api.patch(`/tasks/${taskId}/status`, { status });
-
-      toast.success("Task status updated");
-
-      const updatedTask = response.data?.task || response.data;
-
-      setTasks((previous) =>
-        previous.map((task) =>
-          task._id === taskId
-            ? {
-                ...task,
-                ...updatedTask,
-              }
-            : task,
-        ),
-      );
-
-      setSelectedTask((previous) =>
-        previous?._id === taskId
-          ? {
-              ...previous,
-              ...updatedTask,
-            }
-          : previous,
-      );
+      await api.patch(`/tasks/${taskId}/status`, { status });
     } catch (error) {
-      console.error("Status update error:", error);
-
+      setSelectedTask((previous) =>
+        previous?._id === taskId ? { ...previous, status: previousStatus } : previous
+      );
       toast.error(getErrorMessage(error, "Could not update status"));
     }
   };
 
+  const togglePin = async (task, event) => {
+    event?.stopPropagation();
+
+    const nextPinned = !task.pinned;
+
+    setTasks((previous) => {
+      const updated = previous.map((item) =>
+        item._id === task._id ? { ...item, pinned: nextPinned } : item
+      );
+      return [...updated].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+    });
+
+    setSelectedTask((previous) =>
+      previous?._id === task._id ? { ...previous, pinned: nextPinned } : previous
+    );
+
+    try {
+      await api.patch(`/tasks/${task._id}/pin`);
+    } catch (error) {
+      setTasks((previous) =>
+        previous.map((item) =>
+          item._id === task._id ? { ...item, pinned: !nextPinned } : item
+        )
+      );
+      toast.error(getErrorMessage(error, "Could not update pin"));
+    }
+  };
+
   /* =======================================================
-     SEND MESSAGE
+     MESSAGES
   ======================================================= */
 
-  const sendMessage = async () => {
-    if (!selectedTask?._id) {
-      return;
-    }
+  const appendMessage = (message) => {
+    setSelectedTask((previous) => {
+      if (!previous) return previous;
+      if (previous.messages?.some((m) => m._id === message._id)) return previous;
+      return { ...previous, messages: [...(previous.messages || []), message] };
+    });
 
-    if (!messageText.trim()) {
-      return;
+    requestAnimationFrame(() =>
+      chatBottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    );
+  };
+
+  // NEW: emits a "typing" ping to the room. The backend already
+  // relays this (see utils/socket.js) — no server change needed.
+  const handleMessageTextChange = (event) => {
+    setMessageText(event.target.value);
+    if (selectedTask?._id && user?.name) {
+      getSocket().emit("typing", { taskId: selectedTask._id, userName: user.name });
     }
+  };
+
+  const sendMessage = async () => {
+    if (!selectedTask?._id || !messageText.trim() || sendingMessage) return;
+
+    const body = messageText.trim();
+    setMessageText("");
 
     try {
       setSendingMessage(true);
-
       const response = await api.post(`/tasks/${selectedTask._id}/messages`, {
-        text: messageText.trim(),
+        text: body,
       });
-
-      setSelectedTask((previous) => {
-        const exists = previous?.messages?.some(
-          (message) => message._id === response.data._id,
-        );
-        if (exists) return previous;
-        return {
-          ...previous,
-          messages: [...(previous?.messages || []), response.data],
-        };
-      });
-
-      setMessageText("");
-
-      setTimeout(() => {
-        chatBottomRef.current?.scrollIntoView({
-          behavior: "smooth",
-        });
-      }, 50);
+      appendMessage(response.data);
     } catch (error) {
-      console.error("Send message error:", error);
-
+      setMessageText(body);
       toast.error(getErrorMessage(error, "Could not send message"));
     } finally {
       setSendingMessage(false);
     }
   };
 
-  /* =======================================================
-     SEND PHOTO
-  ======================================================= */
-
   const sendPhoto = async (event) => {
     const file = event.target.files?.[0];
-
     event.target.value = "";
 
-    if (!file || !selectedTask?._id) {
-      return;
-    }
+    if (!file || !selectedTask?._id) return;
 
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image");
-      return;
-    }
+    if (!file.type.startsWith("image/")) return toast.error("Please select an image");
+    if (file.size > 5 * 1024 * 1024) return toast.error("Image must be under 5MB");
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be smaller than 5MB");
-      return;
-    }
+    const caption = messageText.trim();
+    setMessageText("");
 
     try {
       setSendingMessage(true);
 
       const formData = new FormData();
-
       formData.append("photo", file);
-
-      if (messageText.trim()) {
-        formData.append("caption", messageText.trim());
-      }
+      if (caption) formData.append("caption", caption);
 
       const response = await api.post(
         `/tasks/${selectedTask._id}/messages/photo`,
         formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        },
+        { headers: { "Content-Type": "multipart/form-data" } }
       );
 
-      setSelectedTask((previous) => {
-        const exists = previous?.messages?.some(
-          (message) => message._id === response.data._id,
-        );
-        if (exists) return previous;
-        return {
-          ...previous,
-          messages: [...(previous?.messages || []), response.data],
-        };
-      });
-
-      setMessageText("");
-
-      toast.success("Photo sent");
-
-      setTimeout(() => {
-        chatBottomRef.current?.scrollIntoView({
-          behavior: "smooth",
-        });
-      }, 50);
+      appendMessage(response.data);
     } catch (error) {
-      console.error("Photo message error:", error);
-
+      setMessageText(caption);
       toast.error(getErrorMessage(error, "Could not send photo"));
     } finally {
       setSendingMessage(false);
     }
   };
 
-  /* =======================================================
-     EDIT MESSAGE
-  ======================================================= */
-
   const startEditMessage = (message) => {
     setEditingMessage(message);
     setEditText(message.text || "");
-  };
-
-  const cancelEditMessage = () => {
-    setEditingMessage(null);
-    setEditText("");
+    setMessageMenu(null);
   };
 
   const saveEditedMessage = async () => {
-    if (!editingMessage?._id) {
-      return;
-    }
-
-    if (!editText.trim()) {
-      toast.error("Message cannot be empty");
-      return;
-    }
+    if (!editingMessage?._id || !editText.trim()) return;
 
     try {
       const response = await api.patch(
         `/tasks/${selectedTask._id}/messages/${editingMessage._id}`,
-        {
-          text: editText.trim(),
-        },
+        { text: editText.trim() }
       );
 
       setSelectedTask((previous) => ({
         ...previous,
-
         messages: previous.messages.map((message) =>
-          message._id === editingMessage._id ? response.data : message,
+          message._id === editingMessage._id
+            ? { ...message, ...response.data }
+            : message
         ),
       }));
 
-      toast.success("Message updated");
-
-      cancelEditMessage();
+      setEditingMessage(null);
+      setEditText("");
     } catch (error) {
-      console.error("Edit message error:", error);
-
       toast.error(getErrorMessage(error, "Could not edit message"));
+    }
+  };
+
+  // UPDATED: scope is "me" (hide just for you) or "everyone" (wipe for
+  // the whole chat — only allowed on your own messages; the backend
+  // enforces this regardless of what gets sent here).
+  const deleteMessageById = async (message, scope = "me") => {
+    setMessageMenu(null);
+
+    try {
+      await api.delete(
+        `/tasks/${selectedTask._id}/messages/${message._id}?scope=${scope}`
+      );
+
+      setSelectedTask((previous) => ({
+        ...previous,
+        messages: previous.messages.map((item) => {
+          if (item._id !== message._id) return item;
+
+          if (scope === "everyone") {
+            return { ...item, deleted: true, photoUrl: "", text: "This message was deleted" };
+          }
+
+          // "me" — only my own view changes; nobody else sees this.
+          return { ...item, hiddenForMe: true, photoUrl: "", text: "" };
+        }),
+      }));
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not delete message"));
+    }
+  };
+
+  /* =======================================================
+     CHECKLIST ACTIONS
+  ======================================================= */
+
+  const addChecklistItem = async (text) => {
+    try {
+      const response = await api.post(`/tasks/${selectedTask._id}/checklist`, { text });
+      setSelectedTask((previous) => ({
+        ...previous,
+        checklist: [...(previous.checklist || []), response.data],
+      }));
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not add item"));
+    }
+  };
+
+  const toggleChecklistItem = async (item, done) => {
+    // Optimistic — ticking a box should feel instant.
+    setSelectedTask((previous) => ({
+      ...previous,
+      checklist: previous.checklist.map((entry) =>
+        entry._id === item._id
+          ? {
+              ...entry,
+              done,
+              doneByName: done ? getUserName(user) : "",
+              doneAt: done ? new Date().toISOString() : null,
+            }
+          : entry
+      ),
+    }));
+
+    try {
+      await api.patch(`/tasks/${selectedTask._id}/checklist/${item._id}`, { done });
+    } catch (error) {
+      setSelectedTask((previous) => ({
+        ...previous,
+        checklist: previous.checklist.map((entry) =>
+          entry._id === item._id ? item : entry
+        ),
+      }));
+      toast.error(getErrorMessage(error, "Could not update item"));
+    }
+  };
+
+  const deleteChecklistItem = async (item) => {
+    setSelectedTask((previous) => ({
+      ...previous,
+      checklist: previous.checklist.filter((entry) => entry._id !== item._id),
+    }));
+
+    try {
+      await api.delete(`/tasks/${selectedTask._id}/checklist/${item._id}`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not delete item"));
+    }
+  };
+
+  const setChecklistRecurrence = async (value) => {
+    setSelectedTask((previous) => ({
+      ...previous,
+      checklistRecurrence: { ...value, lastResetAt: new Date().toISOString() },
+    }));
+
+    try {
+      await api.patch(`/tasks/${selectedTask._id}/checklist/recurrence`, value);
+      toast.success(
+        value.enabled ? `Checklist resets ${value.frequency}` : "Repeat turned off"
+      );
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not update repeat"));
     }
   };
 
@@ -834,25 +1237,15 @@ useEffect(() => {
   ======================================================= */
 
   const deleteCurrentTask = async () => {
-    if (!selectedTask?._id) {
-      return;
-    }
+    if (!selectedTask?._id) return;
 
     try {
       setDeleting(true);
-
       await api.delete(`/tasks/${selectedTask._id}`);
-
-      toast.success("Task deleted successfully");
-
-      setTasks((previous) =>
-        previous.filter((task) => task._id !== selectedTask._id),
-      );
-
+      toast.success("Task deleted");
+      setTasks((previous) => previous.filter((task) => task._id !== selectedTask._id));
       closeTask();
     } catch (error) {
-      console.error("Delete task error:", error);
-
       toast.error(getErrorMessage(error, "Could not delete task"));
     } finally {
       setDeleting(false);
@@ -860,184 +1253,79 @@ useEffect(() => {
   };
 
   /* =======================================================
-     PARTICIPANTS
+     DERIVED
   ======================================================= */
 
-  const getParticipants = (task) => {
-    if (task?.mode === "GROUP") {
-      return task.participants || [];
-    }
+  const memberIds = useMemo(() => getChatMemberIds(selectedTask), [selectedTask]);
 
-    return task?.assignedTo ? [task.assignedTo] : [];
-  };
+  const chatTitle = useMemo(
+    () => getChatTitle(selectedTask, myId),
+    [selectedTask, myId]
+  );
 
-  /* =======================================================
-     STATUS CHIP
-  ======================================================= */
-
-  const getStatusChip = (status) => {
-    if (status === "completed") {
-      return (
-        <Chip
-          size="small"
-          icon={<CheckCircle />}
-          label="Completed"
-          sx={{
-            fontWeight: 700,
-            borderRadius: 2,
-          }}
-        />
-      );
-    }
-
-    if (status === "in-progress") {
-      return (
-        <Chip
-          size="small"
-          icon={<AccessTime />}
-          label="In Progress"
-          sx={{
-            fontWeight: 700,
-            borderRadius: 2,
-          }}
-        />
-      );
-    }
+  const statusChip = (status) => {
+    const map = {
+      completed: { icon: <CheckCircle sx={{ fontSize: 14 }} />, label: "Completed", bg: "#E8F7EE", color: "#15803D" },
+      "in-progress": { icon: <AccessTime sx={{ fontSize: 14 }} />, label: "In Progress", bg: "#FFF4E5", color: "#B45309" },
+      pending: { icon: <TaskAlt sx={{ fontSize: 14 }} />, label: "Pending", bg: "#F1EDF8", color: "#6B6478" },
+    };
+    const cfg = map[status] || map.pending;
 
     return (
       <Chip
         size="small"
-        icon={<TaskAlt />}
-        label="Pending"
+        icon={cfg.icon}
+        label={cfg.label}
         sx={{
-          fontWeight: 700,
-          borderRadius: 2,
+          height: 22, fontSize: 10, fontWeight: 800, borderRadius: 1.5,
+          bgcolor: cfg.bg, color: cfg.color,
+          "& .MuiChip-icon": { color: cfg.color, ml: 0.5 },
         }}
       />
     );
   };
 
   /* =======================================================
-     JSX
+     RENDER
   ======================================================= */
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        bgcolor: "#FAF9FF",
-        background: "linear-gradient(180deg, #FAF9FF 0%, #FFFFFF 55%)",
-        overflowX: "hidden",
-      }}
-    >
-      {/* =================================================
-          NAVBAR
-      ================================================= */}
-
-      <Box
-        sx={{
-          display: {
-            xs: selectedTask ? "none" : "block",
-            md: "block",
-          },
-        }}
-      >
+    <Box sx={{ minHeight: "100vh", background: "linear-gradient(180deg,#FAF9FF 0%,#FFFFFF 55%)", overflowX: "hidden" }}>
+      <Box sx={{ display: { xs: selectedTask ? "none" : "block", md: "block" } }}>
         <Navbar />
       </Box>
 
-      {/* =================================================
-          PAGE CONTAINER
-      ================================================= */}
-
       <Box
         sx={{
-          maxWidth: 1500,
-          mx: "auto",
-
-          px: {
-            xs: selectedTask ? 0 : 1.5,
-            sm: 2.5,
-            md: 3,
-          },
-
-          py: {
-            xs: selectedTask ? 0 : 2,
-            sm: 2.5,
-            md: 3,
-          },
+          maxWidth: 1500, mx: "auto",
+          px: { xs: selectedTask ? 0 : 1.5, sm: 2.5, md: 3 },
+          py: { xs: selectedTask ? 0 : 2, sm: 2.5, md: 3 },
         }}
       >
-        {/* =================================================
-            PAGE HEADER
-        ================================================= */}
+        {/* ---------------- HEADER ---------------- */}
 
         <Stack
-          direction={{
-            xs: "column",
-            sm: "row",
-          }}
+          direction={{ xs: "column", sm: "row" }}
           justifyContent="space-between"
-          alignItems={{
-            xs: "stretch",
-            sm: "center",
-          }}
+          alignItems={{ xs: "stretch", sm: "center" }}
           spacing={2}
-          sx={{
-            mb: 2.5,
-
-            display: {
-              xs: selectedTask ? "none" : "flex",
-              md: "flex",
-            },
-          }}
+          sx={{ mb: 2.5, display: { xs: selectedTask ? "none" : "flex", md: "flex" } }}
         >
           <Box>
-            <Typography
-              sx={{
-                fontSize: {
-                  xs: 24,
-                  sm: 28,
-                },
-                fontWeight: 800,
-                color: "#171225",
-                letterSpacing: -0.6,
-              }}
-            >
+            <Typography sx={{ fontSize: { xs: 24, sm: 28 }, fontWeight: 800, color: "#171225", letterSpacing: -0.6 }}>
               Tasks
             </Typography>
-
-            <Typography
-              sx={{
-                mt: 0.5,
-                color: "#77728A",
-                fontSize: 13.5,
-              }}
-            >
-              Assign, track and discuss your tasks
+            <Typography sx={{ mt: 0.5, color: "#77728A", fontSize: 13.5 }}>
+              Assign, track and discuss your work
             </Typography>
           </Box>
 
-          <Stack
-            direction="row"
-            spacing={1}
-            sx={{
-              width: {
-                xs: "100%",
-                sm: "auto",
-              },
-            }}
-          >
+          <Stack direction="row" spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
             <Tooltip title="Refresh">
               <IconButton
                 onClick={loadTasks}
                 disabled={loading}
-                sx={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 2.5,
-                  border: "1px solid #E7E1F5",
-                  bgcolor: "#fff",
-                }}
+                sx={{ width: 42, height: 42, borderRadius: 2.5, border: "1px solid #E7E1F5", bgcolor: "#fff" }}
               >
                 <Refresh fontSize="small" />
               </IconButton>
@@ -1052,16 +1340,10 @@ useEffect(() => {
                 setCreateOpen(true);
               }}
               sx={{
-                minHeight: 42,
-                borderRadius: 2.5,
-                px: 2,
-                textTransform: "none",
-                fontWeight: 700,
-                bgcolor: "#7C3AED",
+                minHeight: 42, borderRadius: 2.5, px: 2, textTransform: "none",
+                fontWeight: 700, bgcolor: PURPLE,
                 boxShadow: "0 8px 20px rgba(124,58,237,.20)",
-                "&:hover": {
-                  bgcolor: "#6D28D9",
-                },
+                "&:hover": { bgcolor: PURPLE_DARK },
               }}
             >
               Create Task
@@ -1069,462 +1351,239 @@ useEffect(() => {
           </Stack>
         </Stack>
 
-        {/* =================================================
-            FILTERS
-        ================================================= */}
+        {/* ---------------- FILTERS ---------------- */}
 
         <Paper
           elevation={0}
           sx={{
-            p: 1,
-            mb: 2,
-            borderRadius: 3,
-            border: "1px solid #ECE8F5",
-            bgcolor: "#fff",
-
-            display: {
-              xs: selectedTask ? "none" : "block",
-              md: "block",
-            },
+            p: 1, mb: 2, borderRadius: 3, border: "1px solid #ECE8F5", bgcolor: "#fff",
+            display: { xs: selectedTask ? "none" : "block", md: "block" },
           }}
         >
-          <Stack
-            direction="row"
-            spacing={0.8}
-            sx={{
-              overflowX: "auto",
-
-              "&::-webkit-scrollbar": {
-                display: "none",
-              },
-            }}
-          >
+          <Stack direction="row" spacing={0.8} sx={{ overflowX: "auto", "&::-webkit-scrollbar": { display: "none" } }}>
             {[
-              {
-                key: "all",
-                label: "All",
-                count: counts.all,
-              },
-              {
-                key: "pending",
-                label: "Pending",
-                count: counts.pending,
-              },
-              {
-                key: "in-progress",
-                label: "In Progress",
-                count: counts.inProgress,
-              },
-              {
-                key: "completed",
-                label: "Completed",
-                count: counts.completed,
-              },
-            ].map((filter) => (
-              <Button
-                key={filter.key}
-                onClick={() => setActiveFilter(filter.key)}
-                sx={{
-                  flexShrink: 0,
-                  minWidth: "auto",
-                  borderRadius: 2,
-                  px: 1.6,
-                  py: 0.9,
-                  textTransform: "none",
-                  fontWeight: 700,
-                  color: activeFilter === filter.key ? "#fff" : "#686176",
-                  bgcolor:
-                    activeFilter === filter.key ? "#7C3AED" : "transparent",
-
-                  "&:hover": {
-                    bgcolor:
-                      activeFilter === filter.key ? "#6D28D9" : "#F5F2FA",
-                  },
-                }}
-              >
-                {filter.label}
-
-                <Box
-                  component="span"
+              { key: "all", label: "All", count: counts.all },
+              { key: "pending", label: "Pending", count: counts.pending },
+              { key: "in-progress", label: "In Progress", count: counts.inProgress },
+              { key: "completed", label: "Completed", count: counts.completed },
+            ].map((filter) => {
+              const active = activeFilter === filter.key;
+              return (
+                <Button
+                  key={filter.key}
+                  onClick={() => setActiveFilter(filter.key)}
                   sx={{
-                    ml: 0.8,
-                    minWidth: 21,
-                    height: 21,
-                    px: 0.5,
-                    borderRadius: 10,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 11,
-                    bgcolor:
-                      activeFilter === filter.key
-                        ? "rgba(255,255,255,.18)"
-                        : "#F1EDF8",
+                    flexShrink: 0, minWidth: "auto", borderRadius: 2, px: 1.6, py: 0.9,
+                    textTransform: "none", fontWeight: 700,
+                    color: active ? "#fff" : "#686176",
+                    bgcolor: active ? PURPLE : "transparent",
+                    "&:hover": { bgcolor: active ? PURPLE_DARK : "#F5F2FA" },
                   }}
                 >
-                  {filter.count}
-                </Box>
-              </Button>
-            ))}
+                  {filter.label}
+                  <Box
+                    component="span"
+                    sx={{
+                      ml: 0.8, minWidth: 21, height: 21, px: 0.5, borderRadius: 10,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11,
+                      bgcolor: active ? "rgba(255,255,255,.18)" : "#F1EDF8",
+                    }}
+                  >
+                    {filter.count}
+                  </Box>
+                </Button>
+              );
+            })}
           </Stack>
         </Paper>
 
-        {/* =================================================
-            MAIN GRID
-        ================================================= */}
+        {/* ---------------- GRID ---------------- */}
 
         <Box
           sx={{
             display: "grid",
-
             gridTemplateColumns: {
               xs: "1fr",
-              md: selectedTask ? "minmax(320px, 430px) minmax(0, 1fr)" : "1fr",
+              md: selectedTask ? "minmax(320px, 400px) minmax(0, 1fr)" : "1fr",
             },
-
-            gap: {
-              xs: 0,
-              md: 2,
-            },
-
+            gap: { xs: 0, md: 2 },
             alignItems: "stretch",
-
-            position: "relative",
-
             minHeight: {
               xs: selectedTask ? "100dvh" : "calc(100dvh - 155px)",
-              md: 650,
+              md: 680,
             },
           }}
         >
-          {/* =================================================
-              TASK LIST
-          ================================================= */}
+          {/* ============ TASK LIST ============ */}
 
           <Paper
             elevation={0}
             sx={{
-              display: {
-                xs: selectedTask ? "none" : "flex",
-                md: "flex",
-              },
-
+              display: { xs: selectedTask ? "none" : "flex", md: "flex" },
               flexDirection: "column",
-
-              borderRadius: {
-                xs: 0,
-                md: 3,
-              },
-
-              border: {
-                xs: "none",
-                md: "1px solid #ECE8F5",
-              },
-
-              bgcolor: "#fff",
-              overflow: "hidden",
-
-              minHeight: {
-                xs: "calc(100dvh - 155px)",
-                md: 650,
-              },
-
-              height: {
-                xs: "calc(100dvh - 155px)",
-                md: "auto",
-              },
+              borderRadius: { xs: 0, md: 3 },
+              border: { xs: "none", md: "1px solid #ECE8F5" },
+              bgcolor: "#fff", overflow: "hidden",
+              height: { xs: "calc(100dvh - 155px)", md: 680 },
             }}
           >
-            <Box
-              sx={{
-                px: 2,
-                py: 1.7,
-                borderBottom: "1px solid #F0EDF5",
-              }}
-            >
-              <Typography
-                sx={{
-                  fontWeight: 800,
-                  fontSize: 15,
-                }}
-              >
-                My Tasks
-              </Typography>
-
-              <Typography
-                sx={{
-                  color: "#8A8498",
-                  fontSize: 12,
-                  mt: 0.3,
-                }}
-              >
-                {filteredTasks.length} task
-                {filteredTasks.length !== 1 ? "s" : ""}
+            <Box sx={{ px: 2, py: 1.6, borderBottom: "1px solid #F0EDF5" }}>
+              <Typography sx={{ fontWeight: 800, fontSize: 15 }}>My Tasks</Typography>
+              <Typography sx={{ color: "#8A8498", fontSize: 12, mt: 0.3 }}>
+                {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
               </Typography>
             </Box>
 
             {loading ? (
-              <Stack
-                alignItems="center"
-                justifyContent="center"
-                sx={{
-                  minHeight: 420,
-                  gap: 1.5,
-                }}
-              >
-                <CircularProgress
-                  size={28}
-                  sx={{
-                    color: "#7C3AED",
-                  }}
-                />
-
-                <Typography
-                  sx={{
-                    color: "#8A8498",
-                    fontSize: 13,
-                  }}
-                >
-                  Loading tasks...
-                </Typography>
+              <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, gap: 1.5 }}>
+                <CircularProgress size={28} sx={{ color: PURPLE }} />
+                <Typography sx={{ color: "#8A8498", fontSize: 13 }}>Loading tasks...</Typography>
               </Stack>
             ) : filteredTasks.length === 0 ? (
-              <Stack
-                alignItems="center"
-                justifyContent="center"
-                sx={{
-                  minHeight: 420,
-                  px: 3,
-                  textAlign: "center",
-                }}
-              >
-                <Avatar
-                  sx={{
-                    width: 62,
-                    height: 62,
-                    mb: 1.5,
-                    bgcolor: "#F1EAFE",
-                    color: "#7C3AED",
-                  }}
-                >
+              <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, px: 3, textAlign: "center" }}>
+                <Avatar sx={{ width: 62, height: 62, mb: 1.5, bgcolor: "#F1EAFE", color: PURPLE }}>
                   <TaskAlt />
                 </Avatar>
-
-                <Typography
-                  sx={{
-                    fontWeight: 800,
-                    fontSize: 16,
-                  }}
-                >
-                  No tasks found
-                </Typography>
-
-                <Typography
-                  sx={{
-                    color: "#8A8498",
-                    fontSize: 13,
-                    mt: 0.5,
-                    maxWidth: 300,
-                  }}
-                >
+                <Typography sx={{ fontWeight: 800, fontSize: 16 }}>No tasks found</Typography>
+                <Typography sx={{ color: "#8A8498", fontSize: 13, mt: 0.5, maxWidth: 300 }}>
                   Create a task or change the selected filter.
                 </Typography>
               </Stack>
             ) : (
               <Stack
                 sx={{
-                  overflowY: "auto",
-                  flex: 1,
-
-                  "&::-webkit-scrollbar": {
-                    width: 5,
-                  },
-
-                  "&::-webkit-scrollbar-thumb": {
-                    background: "#DDD7E8",
-                    borderRadius: 10,
-                  },
+                  overflowY: "auto", flex: 1,
+                  "&::-webkit-scrollbar": { width: 5 },
+                  "&::-webkit-scrollbar-thumb": { background: "#DDD7E8", borderRadius: 10 },
                 }}
-                divider={
-                  <Divider
-                    sx={{
-                      borderColor: "#F2EFF6",
-                    }}
-                  />
-                }
+                divider={<Divider sx={{ borderColor: "#F2EFF6" }} />}
               >
                 {filteredTasks.map((task) => {
                   const isSelected = selectedTask?._id === task._id;
-
-                  const participants = getParticipants(task);
+                  const partner = getChatTitle(task, myId);
+                  const doneCount = (task.checklist || []).filter((i) => i.done).length;
+                  const totalCount = (task.checklist || []).length;
+                  const pMeta = priorityMeta(task.priority);
 
                   return (
                     <Box
                       key={task._id}
                       onClick={() => openTask(task)}
                       sx={{
-                        p: 1.7,
-                        cursor: "pointer",
-
+                        p: 1.6, cursor: "pointer", transition: "0.18s",
                         bgcolor: isSelected ? "#F7F3FF" : "#fff",
-
-                        transition: "0.18s",
-
-                        "&:hover": {
-                          bgcolor: "#FAF8FE",
-                        },
+                        "&:hover": { bgcolor: isSelected ? "#F4EEFF" : "#FAF8FE" },
                       }}
                     >
-                      <Stack
-                        direction="row"
-                        spacing={1.2}
-                        alignItems="flex-start"
-                      >
-                        {/* TASK ICON */}
-
-                        <Avatar
-                          sx={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 2.2,
-                            bgcolor: "#EEE7FF",
-                            color: "#6D28D9",
-                          }}
+                      <Stack direction="row" spacing={1.2} alignItems="flex-start">
+                        <Badge
+                          color="secondary"
+                          variant="dot"
+                          invisible={!task.unread}
+                          sx={{ "& .MuiBadge-dot": { bgcolor: PURPLE } }}
                         >
-                          {task.mode === "GROUP" ? (
-                            <Groups fontSize="small" />
-                          ) : (
-                            <TaskAlt fontSize="small" />
-                          )}
-                        </Avatar>
-
-                        {/* TASK CONTENT */}
-
-                        <Box
-                          sx={{
-                            minWidth: 0,
-                            flex: 1,
-                          }}
-                        >
-                          <Stack
-                            direction="row"
-                            alignItems="flex-start"
-                            justifyContent="space-between"
-                            spacing={1}
+                          <Avatar
+                            sx={{
+                              width: 42, height: 42, borderRadius: 2.2,
+                              bgcolor: task.mode === "GROUP" ? "#EEE7FF" : colorFor(getId(task.assignedTo) || task._id),
+                              color: task.mode === "GROUP" ? PURPLE_DARK : "#fff",
+                              fontSize: 15, fontWeight: 800,
+                            }}
                           >
-                            <Box
-                              sx={{
-                                minWidth: 0,
-                                flex: 1,
-                              }}
-                            >
-                              {/* TASK TITLE */}
+                            {task.mode === "GROUP" ? <Groups fontSize="small" /> : getInitial(partner)}
+                          </Avatar>
+                        </Badge>
 
-                              <Typography
-                                sx={{
-                                  fontWeight: 800,
-                                  fontSize: 14,
-                                  color: "#27212F",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {task.title}
-                              </Typography>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.6}>
+                            {task.pinned && <PushPin sx={{ fontSize: 13, color: PURPLE, transform: "rotate(45deg)" }} />}
 
-                              {/* ASSIGNED USER NAME */}
+                            {/* Priority dot — quick visual triage without opening the task. */}
+                            {task.priority && task.priority !== "medium" && (
+                              <Tooltip title={`${pMeta.label} priority`}>
+                                <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: pMeta.color, flexShrink: 0 }} />
+                              </Tooltip>
+                            )}
 
-                              <Typography
-                                sx={{
-                                  mt: 0.35,
-                                  fontSize: 11.5,
-                                  fontWeight: 600,
-                                  color: "#6D28D9",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {task.mode === "GROUP"
-                                  ? `${participants.length} users`
-                                  : `Assigned to: ${getUserName(
-                                      task.assignedTo,
-                                    )}`}
-                              </Typography>
-                            </Box>
-
-                            {getStatusChip(task.status)}
-                          </Stack>
-
-                          {/* DESCRIPTION */}
-
-                          {task.description && (
                             <Typography
                               sx={{
-                                mt: 0.5,
-                                color: "#858093",
-                                fontSize: 12,
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                overflow: "hidden",
+                                fontWeight: 800, fontSize: 14, color: "#27212F",
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
+                              }}
+                            >
+                              {task.title}
+                            </Typography>
+
+                            {task.lastMessageAt && (
+                              <Typography sx={{ fontSize: 10, color: "#A39CAF", flexShrink: 0 }}>
+                                {formatTime(task.lastMessageAt)}
+                              </Typography>
+                            )}
+                          </Stack>
+
+                          <Typography
+                            sx={{
+                              mt: 0.2, fontSize: 11.5, fontWeight: 600, color: PURPLE_DARK,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}
+                          >
+                            {task.mode === "GROUP" ? `${(task.participants || []).length} members` : partner}
+                          </Typography>
+
+                          {task.lastMessageText ? (
+                            <Typography
+                              sx={{
+                                mt: 0.4, fontSize: 11.5, color: "#8B8596",
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              }}
+                            >
+                              {task.lastMessageSenderName ? `${task.lastMessageSenderName}: ` : ""}
+                              {task.lastMessageText}
+                            </Typography>
+                          ) : task.description ? (
+                            <Typography
+                              sx={{
+                                mt: 0.4, fontSize: 11.5, color: "#98929F",
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                               }}
                             >
                               {task.description}
                             </Typography>
-                          )}
+                          ) : null}
 
-                          {/* META */}
+                          <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.9, flexWrap: "wrap", rowGap: 0.5 }}>
+                            {statusChip(task.status)}
 
-                          <Stack
-                            direction="row"
-                            spacing={0.7}
-                            alignItems="center"
-                            sx={{
-                              mt: 1,
-                              flexWrap: "wrap",
-                            }}
-                          >
-                            <Chip
-                              size="small"
-                              label={task.mode}
-                              sx={{
-                                height: 23,
-                                fontSize: 10,
-                                fontWeight: 700,
-                                borderRadius: 1.5,
-                                bgcolor: "#F5F1FB",
-                              }}
-                            />
-
-                            {task.dueDate && (
+                            {totalCount > 0 && (
                               <Chip
                                 size="small"
-                                label={`Due ${formatDate(task.dueDate)}`}
+                                icon={<PlaylistAddCheck sx={{ fontSize: 13 }} />}
+                                label={`${doneCount}/${totalCount}`}
                                 sx={{
-                                  height: 23,
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  borderRadius: 1.5,
+                                  height: 22, fontSize: 10, fontWeight: 700, borderRadius: 1.5,
+                                  bgcolor: doneCount === totalCount ? "#E8F7EE" : "#F5F1FB",
                                 }}
                               />
                             )}
 
-                            {task.mode === "GROUP" &&
-                              participants.length > 0 && (
-                                <Typography
-                                  sx={{
-                                    fontSize: 10.5,
-                                    color: "#938DA0",
-                                  }}
-                                >
-                                  {participants.length} participant
-                                  {participants.length > 1 ? "s" : ""}
-                                </Typography>
-                              )}
+                            {task.dueDate && (
+                              <Chip
+                                size="small"
+                                label={formatDate(task.dueDate)}
+                                sx={{ height: 22, fontSize: 10, fontWeight: 600, borderRadius: 1.5 }}
+                              />
+                            )}
                           </Stack>
                         </Box>
+
+                        <IconButton size="small" onClick={(event) => togglePin(task, event)} sx={{ p: 0.5 }}>
+                          {task.pinned ? (
+                            <PushPin sx={{ fontSize: 16, color: PURPLE }} />
+                          ) : (
+                            <PushPinOutlined sx={{ fontSize: 16, color: "#C3BCCE" }} />
+                          )}
+                        </IconButton>
                       </Stack>
                     </Box>
                   );
@@ -1533,537 +1592,369 @@ useEffect(() => {
             )}
           </Paper>
 
-          {/* =================================================
-              CHAT
-          ================================================= */}
+          {/* ============ CHAT ============ */}
 
           {selectedTask && (
             <Paper
               elevation={0}
               sx={{
-                display: "flex",
-                flexDirection: "column",
-
-                position: {
-                  xs: "fixed",
-                  md: "relative",
-                },
-
-                top: {
-                  xs: 0,
-                  md: "auto",
-                },
-
-                left: {
-                  xs: 0,
-                  md: "auto",
-                },
-
-                right: {
-                  xs: 0,
-                  md: "auto",
-                },
-
-                bottom: {
-                  xs: 0,
-                  md: "auto",
-                },
-
-                width: {
-                  xs: "100%",
-                  md: "auto",
-                },
-
-                height: {
-                  xs: "100dvh",
-                  md: 650,
-                },
-
-                minHeight: {
-                  xs: "100dvh",
-                  md: 650,
-                },
-
-                zIndex: {
-                  xs: 1300,
-                  md: "auto",
-                },
-
-                borderRadius: {
-                  xs: 0,
-                  md: 3,
-                },
-
-                border: {
-                  xs: "none",
-                  md: "1px solid #ECE8F5",
-                },
-
-                bgcolor: "#fff",
-                overflow: "hidden",
+                display: "flex", flexDirection: "column",
+                position: { xs: "fixed", md: "relative" },
+                inset: { xs: 0, md: "auto" },
+                width: { xs: "100%", md: "auto" },
+                height: { xs: "100dvh", md: 680 },
+                zIndex: { xs: 1300, md: "auto" },
+                borderRadius: { xs: 0, md: 3 },
+                border: { xs: "none", md: "1px solid #ECE8F5" },
+                bgcolor: "#fff", overflow: "hidden",
               }}
             >
-              {/* =================================================
-                  CHAT HEADER
-              ================================================= */}
+              {/* ----- chat header ----- */}
 
-              <Box
-                sx={{
-                  px: {
-                    xs: 1,
-                    sm: 2,
-                  },
-
-                  py: {
-                    xs: 0.9,
-                    sm: 1.5,
-                  },
-
-                  borderBottom: "1px solid #EEEAF4",
-
-                  bgcolor: "#fff",
-
-                  flexShrink: 0,
-
-                  position: "relative",
-
-                  zIndex: 2,
-                }}
-              >
+              <Box sx={{ px: { xs: 1, sm: 2 }, py: { xs: 0.9, sm: 1.3 }, borderBottom: "1px solid #EEEAF4", flexShrink: 0 }}>
                 <Stack direction="row" alignItems="center" spacing={1}>
-                  {/* MOBILE BACK */}
-
                   <IconButton
                     onClick={closeTask}
-                    sx={{
-                      display: {
-                        xs: "flex",
-                        md: "none",
-                      },
-
-                      width: 40,
-                      height: 40,
-                      mr: 0.2,
-                      color: "#332D3A",
-                    }}
+                    sx={{ display: { xs: "flex", md: "none" }, width: 38, height: 38, color: "#332D3A" }}
                   >
                     <ArrowBack />
                   </IconButton>
 
-                  {/* TASK AVATAR */}
-
-                  <Avatar
-                    sx={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 2.2,
-                      bgcolor: "#EEE7FF",
-                      color: "#6D28D9",
-                    }}
-                  >
-                    {selectedTask.mode === "GROUP" ? <Groups /> : <TaskAlt />}
-                  </Avatar>
-
-                  {/* CHAT TITLE */}
-
-                  <Box
-                    sx={{
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
-                    <Typography
+                  {selectedTask.mode === "GROUP" ? (
+                    <AvatarGroup max={3} sx={{ "& .MuiAvatar-root": { width: 34, height: 34, fontSize: 13, fontWeight: 700 } }}>
+                      {(selectedTask.participants || []).map((person) => (
+                        <Avatar key={person._id} sx={{ bgcolor: colorFor(person._id) }}>
+                          {getInitial(person)}
+                        </Avatar>
+                      ))}
+                    </AvatarGroup>
+                  ) : (
+                    <Avatar
                       sx={{
-                        fontWeight: 800,
-                        fontSize: 14.5,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        width: 40, height: 40, borderRadius: 2.2, fontWeight: 800,
+                        bgcolor: colorFor(getId(selectedTask.assignedTo) || selectedTask._id),
                       }}
                     >
-                      {selectedTask.title}
+                      {getInitial(chatTitle)}
+                    </Avatar>
+                  )}
+
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    {/* The person you're talking to, not just the task title. */}
+                    <Typography
+                      sx={{
+                        fontWeight: 800, fontSize: 14.5,
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}
+                    >
+                      {chatTitle}
                     </Typography>
 
-                    {/* USER NAME */}
-
+                    {/* Typing indicator replaces the subtitle while active. */}
                     <Typography
                       sx={{
-                        color: "#6D28D9",
-                        fontSize: 11.5,
-                        fontWeight: 600,
-                        mt: 0.2,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        color: typingUser ? PURPLE : "#8A8498", fontSize: 11,
+                        fontStyle: typingUser ? "italic" : "normal",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}
                     >
-                      {selectedTask.mode === "GROUP"
-                        ? `${selectedTask.participants?.length || 0} users`
-                        : `Assigned to: ${getUserName(
-                            selectedTask.assignedTo,
-                          )}`}
+                      {typingUser
+                        ? `${typingUser} is typing...`
+                        : `${selectedTask.title}${
+                            selectedTask.recurrence?.enabled
+                              ? ` • repeats ${selectedTask.recurrence.frequency}`
+                              : ""
+                          }`}
                     </Typography>
                   </Box>
 
-                  {/* DELETE */}
+                  <Tooltip title={selectedTask.pinned ? "Unpin chat" : "Pin chat"}>
+                    <IconButton onClick={(event) => togglePin(selectedTask, event)} sx={{ color: selectedTask.pinned ? PURPLE : "#A9A2B5" }}>
+                      {selectedTask.pinned ? <PushPin fontSize="small" /> : <PushPinOutlined fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
 
                   <Tooltip title="Delete task">
-                    <IconButton
-                      onClick={() => setDeleteDialogOpen(true)}
-                      sx={{
-                        color: "#B42318",
-                      }}
-                    >
+                    <IconButton onClick={() => setDeleteDialogOpen(true)} sx={{ color: "#B42318" }}>
                       <Delete fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 </Stack>
 
-                {/* STATUS + DUE */}
-
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  sx={{
-                    mt: 1.2,
-                  }}
-                >
-                  <FormControl
-                    size="small"
-                    sx={{
-                      flex: 1,
-                    }}
-                  >
+                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                  <FormControl size="small" sx={{ flex: 1 }}>
                     <Select
                       value={selectedTask.status || "pending"}
-                      onChange={(event) =>
-                        updateTaskStatus(selectedTask._id, event.target.value)
-                      }
-                      sx={{
-                        borderRadius: 2,
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
+                      onChange={(event) => updateTaskStatus(selectedTask._id, event.target.value)}
+                      sx={{ borderRadius: 2, fontSize: 12, fontWeight: 700 }}
                     >
                       {STATUS_OPTIONS.map((item) => (
-                        <MenuItem key={item.value} value={item.value}>
-                          {item.label}
-                        </MenuItem>
+                        <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
 
-                  <Box
-                    sx={{
-                      px: 1.4,
-                      py: 0.9,
-                      borderRadius: 2,
-                      bgcolor: "#F8F6FB",
-                      flex: 1,
-                      minWidth: 0,
-                    }}
-                  >
+                  <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: "#F8F6FB", flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: 9.5, color: "#9892A2" }}>Due date</Typography>
                     <Typography
                       sx={{
-                        fontSize: 10,
-                        color: "#9892A2",
-                      }}
-                    >
-                      Due date
-                    </Typography>
-
-                    <Typography
-                      sx={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "#38313F",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        fontSize: 12, fontWeight: 700, color: "#38313F",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}
                     >
                       {formatDate(selectedTask.dueDate)}
                     </Typography>
                   </Box>
+
+                  {selectedTask.priority && (
+                    <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: "#F8F6FB", minWidth: 70 }}>
+                      <Typography sx={{ fontSize: 9.5, color: "#9892A2" }}>Priority</Typography>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: priorityMeta(selectedTask.priority).color, textTransform: "capitalize" }}>
+                        {selectedTask.priority}
+                      </Typography>
+                    </Box>
+                  )}
                 </Stack>
               </Box>
 
-              {/* =================================================
-                  CHAT MESSAGES
-              ================================================= */}
+              {/* ----- checklist ----- */}
+
+              <ChecklistPanel
+                task={selectedTask}
+                open={checklistOpen}
+                onToggleOpen={() => setChecklistOpen((previous) => !previous)}
+                onAdd={addChecklistItem}
+                onToggleItem={toggleChecklistItem}
+                onDeleteItem={deleteChecklistItem}
+                onSetRecurrence={setChecklistRecurrence}
+              />
+
+              {/* ----- messages ----- */}
 
               <Box
+                ref={chatScrollRef}
+                onScroll={onChatScroll}
                 sx={{
-                  flex: 1,
-                  minHeight: 0,
-                  height: 0,
-                  overflowY: "auto",
-
-                  px: {
-                    xs: 1,
-                    sm: 2,
-                  },
-
-                  py: {
-                    xs: 1.5,
-                    sm: 2,
-                  },
-
-                  bgcolor: "#FBFAFD",
-
-                  WebkitOverflowScrolling: "touch",
-
-                  "&::-webkit-scrollbar": {
-                    width: 5,
-                  },
-
-                  "&::-webkit-scrollbar-thumb": {
-                    background: "#D8D1E5",
-                    borderRadius: 10,
-                  },
+                  flex: 1, minHeight: 0, overflowY: "auto",
+                  px: { xs: 1, sm: 2 }, py: { xs: 1.2, sm: 1.8 },
+                  bgcolor: "#FBFAFD", WebkitOverflowScrolling: "touch",
+                  "&::-webkit-scrollbar": { width: 5 },
+                  "&::-webkit-scrollbar-thumb": { background: "#D8D1E5", borderRadius: 10 },
                 }}
               >
                 {taskLoading ? (
-                  <Stack
-                    alignItems="center"
-                    justifyContent="center"
-                    sx={{
-                      minHeight: 350,
-                    }}
-                  >
-                    <CircularProgress
-                      size={25}
-                      sx={{
-                        color: "#7C3AED",
-                      }}
-                    />
+                  <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320 }}>
+                    <CircularProgress size={25} sx={{ color: PURPLE }} />
                   </Stack>
                 ) : !selectedTask.messages?.length ? (
-                  <Stack
-                    alignItems="center"
-                    justifyContent="center"
-                    sx={{
-                      minHeight: 350,
-                      textAlign: "center",
-                    }}
-                  >
-                    <Avatar
-                      sx={{
-                        width: 56,
-                        height: 56,
-                        bgcolor: "#EEE7FF",
-                        color: "#7C3AED",
-                        mb: 1.5,
-                      }}
-                    >
+                  <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320, textAlign: "center" }}>
+                    <Avatar sx={{ width: 56, height: 56, bgcolor: "#EEE7FF", color: PURPLE, mb: 1.5 }}>
                       <Send />
                     </Avatar>
-
-                    <Typography
-                      sx={{
-                        fontWeight: 800,
-                        fontSize: 15,
-                      }}
-                    >
-                      No messages yet
-                    </Typography>
-
-                    <Typography
-                      sx={{
-                        color: "#8D8797",
-                        fontSize: 12,
-                        mt: 0.5,
-                      }}
-                    >
-                      Start the task conversation.
+                    <Typography sx={{ fontWeight: 800, fontSize: 15 }}>No messages yet</Typography>
+                    <Typography sx={{ color: "#8D8797", fontSize: 12, mt: 0.5 }}>
+                      Start the conversation with {chatTitle}.
                     </Typography>
                   </Stack>
                 ) : (
-                  <Stack spacing={1.2}>
-                    {selectedTask.messages.map((message) => {
-                      const senderId = getId(message.sender);
+                  <Stack spacing={0.9}>
+                    {hasMoreMessages && (
+                      <Stack alignItems="center" sx={{ pb: 1 }}>
+                        <Button
+                          size="small"
+                          onClick={loadOlderMessages}
+                          disabled={loadingOlder}
+                          startIcon={loadingOlder ? <CircularProgress size={13} /> : null}
+                          sx={{ textTransform: "none", fontSize: 11.5, fontWeight: 700, color: PURPLE_DARK, borderRadius: 5 }}
+                        >
+                          {loadingOlder ? "Loading..." : "Load older messages"}
+                        </Button>
+                      </Stack>
+                    )}
 
-                      const currentUserId = getId(user?._id);
+                    {selectedTask.messages.map((message, index) => {
+                      const isMine = sameId(message.sender, myId);
+                      const previous = selectedTask.messages[index - 1];
+                      const showDay =
+                        !previous ||
+                        dayLabel(previous.createdAt) !== dayLabel(message.createdAt);
 
-                      const isMine =
-                        senderId && currentUserId && senderId === currentUserId;
+                      const showSender =
+                        selectedTask.mode === "GROUP" &&
+                        !isMine &&
+                        (!previous || !sameId(previous.sender, message.sender) || showDay);
+
+                      // "Removed" covers both delete-for-everyone (visible
+                      // to all) and delete-for-me (visible only to me).
+                      const isRemoved = message.deleted || message.hiddenForMe;
+
+                      const canEdit =
+                        isMine &&
+                        !isRemoved &&
+                        (Date.now() - new Date(message.createdAt).getTime()) / 36e5 < 24;
+
+                      const hasCaption =
+                        message.text && message.text !== "📷 Photo";
 
                       return (
-                        <Box
-                          key={message._id}
-                          sx={{
-                            display: "flex",
-                            justifyContent: isMine ? "flex-end" : "flex-start",
-                          }}
-                        >
-                          <Box
-                            sx={{
-                              maxWidth: {
-                                xs: "88%",
-                                sm: "75%",
-                              },
-                            }}
-                          >
-                            {!isMine && (
-                              <Stack
-                                direction="row"
-                                spacing={0.8}
-                                alignItems="center"
-                                sx={{
-                                  mb: 0.4,
-                                  ml: 0.5,
-                                }}
-                              >
-                                <Avatar
-                                  sx={{
-                                    width: 23,
-                                    height: 23,
-                                    fontSize: 10,
-                                    bgcolor: "#E8E1F5",
-                                    color: "#6D28D9",
-                                  }}
-                                >
-                                  {getInitial(message.senderName)}
-                                </Avatar>
+                        <Box key={message._id}>
+                          {showDay && (
+                            <Stack alignItems="center" sx={{ py: 1 }}>
+                              <Chip
+                                size="small"
+                                label={dayLabel(message.createdAt)}
+                                sx={{ height: 21, fontSize: 10, fontWeight: 700, bgcolor: "#EFEBF7", color: "#6F6880" }}
+                              />
+                            </Stack>
+                          )}
 
+                          <Box sx={{ display: "flex", justifyContent: isMine ? "flex-end" : "flex-start" }}>
+                            <Box sx={{ maxWidth: { xs: "86%", sm: "72%" }, minWidth: 0 }}>
+                              {showSender && (
                                 <Typography
                                   sx={{
-                                    fontSize: 10.5,
-                                    fontWeight: 700,
-                                    color: "#80798C",
+                                    fontSize: 10.5, fontWeight: 800, ml: 1, mb: 0.3,
+                                    color: colorFor(getId(message.sender)),
                                   }}
                                 >
                                   {message.senderName}
                                 </Typography>
-                              </Stack>
-                            )}
-
-                            <Paper
-                              elevation={0}
-                              sx={{
-                                position: "relative",
-
-                                p: 1.15,
-
-                                borderRadius: isMine
-                                  ? "15px 15px 4px 15px"
-                                  : "15px 15px 15px 4px",
-
-                                bgcolor: isMine ? "#7C3AED" : "#fff",
-
-                                color: isMine ? "#fff" : "#332D3A",
-
-                                border: isMine ? "none" : "1px solid #EAE6F1",
-
-                                boxShadow: "0 2px 8px rgba(30,20,50,.04)",
-                              }}
-                            >
-                              {message.photoUrl && (
-                                <Box
-                                  component="img"
-                                  src={message.photoUrl}
-                                  alt="Task attachment"
-                                  sx={{
-                                    display: "block",
-                                    width: "100%",
-                                    maxWidth: 300,
-                                    maxHeight: 300,
-                                    objectFit: "cover",
-                                    borderRadius: 2,
-                                    mb:
-                                      message.text &&
-                                      message.text !== "📷 Photo"
-                                        ? 0.8
-                                        : 0,
-                                    cursor: "pointer",
-                                  }}
-                                  onClick={() =>
-                                    window.open(message.photoUrl, "_blank")
-                                  }
-                                />
                               )}
 
-                              {message.text && (
-                                <Typography
-                                  sx={{
-                                    fontSize: 13,
-                                    lineHeight: 1.5,
-                                    whiteSpace: "pre-wrap",
-                                    wordBreak: "break-word",
-                                  }}
-                                >
-                                  {message.text}
-                                </Typography>
-                              )}
-
-                              <Stack
-                                direction="row"
-                                alignItems="center"
-                                justifyContent="flex-end"
-                                spacing={0.5}
+                              <Paper
+                                elevation={0}
+                                onContextMenu={(event) => {
+                                  if (isRemoved) return;
+                                  event.preventDefault();
+                                  setMessageMenu({ anchor: event.currentTarget, message });
+                                }}
                                 sx={{
-                                  mt: 0.5,
+                                  p: message.photoUrl && !isRemoved ? 0.6 : 1.1,
+                                  borderRadius: isMine ? "16px 16px 5px 16px" : "16px 16px 16px 5px",
+                                  bgcolor: isRemoved ? "#F3F1F7" : isMine ? PURPLE : "#fff",
+                                  color: isRemoved ? "#9A94A3" : isMine ? "#fff" : "#332D3A",
+                                  border: isMine || isRemoved ? "none" : "1px solid #EAE6F1",
+                                  boxShadow: "0 2px 8px rgba(30,20,50,.04)",
                                 }}
                               >
-                                {message.editedAt && (
+                                {message.photoUrl && !isRemoved && (
+                                  <Box sx={{ position: "relative", "&:hover .photo-actions": { opacity: 1 } }}>
+                                    <Box
+                                      component="img"
+                                      src={message.photoUrl}
+                                      alt="Attachment"
+                                      loading="lazy"
+                                      onClick={() => setViewerPhoto(message)}
+                                      sx={{
+                                        display: "block", width: "100%", maxWidth: 280,
+                                        maxHeight: 300, objectFit: "cover",
+                                        borderRadius: 2, cursor: "pointer",
+                                      }}
+                                    />
+
+                                    <Stack
+                                      className="photo-actions"
+                                      direction="row"
+                                      spacing={0.5}
+                                      sx={{
+                                        position: "absolute", top: 6, right: 6,
+                                        opacity: { xs: 1, md: 0 }, transition: "0.2s",
+                                      }}
+                                    >
+                                      <Tooltip title="Download">
+                                        <IconButton
+                                          size="small"
+                                          onClick={() =>
+                                            downloadImage(
+                                              message.photoUrl,
+                                              `task-photo-${message._id}.jpg`
+                                            )
+                                          }
+                                          sx={{
+                                            width: 27, height: 27,
+                                            bgcolor: "rgba(20,12,35,.55)", color: "#fff",
+                                            "&:hover": { bgcolor: "rgba(20,12,35,.75)" },
+                                          }}
+                                        >
+                                          <Download sx={{ fontSize: 15 }} />
+                                        </IconButton>
+                                      </Tooltip>
+
+                                      {isMine && (
+                                        <Tooltip title="Delete for everyone">
+                                          <IconButton
+                                            size="small"
+                                            onClick={() => deleteMessageById(message, "everyone")}
+                                            sx={{
+                                              width: 27, height: 27,
+                                              bgcolor: "rgba(20,12,35,.55)", color: "#fff",
+                                              "&:hover": { bgcolor: "rgba(180,35,24,.85)" },
+                                            }}
+                                          >
+                                            <Delete sx={{ fontSize: 15 }} />
+                                          </IconButton>
+                                        </Tooltip>
+                                      )}
+                                    </Stack>
+                                  </Box>
+                                )}
+
+                                {(hasCaption || isRemoved || !message.photoUrl) && (
                                   <Typography
                                     sx={{
-                                      fontSize: 9,
-                                      opacity: 0.7,
+                                      fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap",
+                                      wordBreak: "break-word",
+                                      fontStyle: isRemoved ? "italic" : "normal",
+                                      px: message.photoUrl && !isRemoved ? 0.6 : 0,
+                                      pt: message.photoUrl && !isRemoved ? 0.6 : 0,
                                     }}
                                   >
-                                    edited
+                                    {message.deleted
+                                      ? "This message was deleted"
+                                      : message.hiddenForMe
+                                      ? "You deleted this message"
+                                      : message.text}
                                   </Typography>
                                 )}
 
-                                <Typography
-                                  sx={{
-                                    fontSize: 9,
-                                    opacity: 0.65,
-                                  }}
+                                <Stack
+                                  direction="row"
+                                  alignItems="center"
+                                  justifyContent="flex-end"
+                                  spacing={0.4}
+                                  sx={{ mt: 0.35, px: message.photoUrl && !isRemoved ? 0.6 : 0, pb: message.photoUrl && !isRemoved ? 0.3 : 0 }}
                                 >
-                                  {formatTime(message.createdAt)}
-                                </Typography>
+                                  {message.editedAt && !isRemoved && (
+                                    <Typography sx={{ fontSize: 9, opacity: 0.7 }}>edited</Typography>
+                                  )}
 
-                                {isMine && (
-                                  <Check
-                                    sx={{
-                                      fontSize: 13,
-                                      opacity: 0.8,
-                                    }}
-                                  />
-                                )}
-                              </Stack>
+                                  {!isRemoved && (
+                                    <Typography sx={{ fontSize: 9, opacity: 0.65 }}>
+                                      {formatTime(message.createdAt)}
+                                    </Typography>
+                                  )}
 
-                              {isMine && (
-                                <Tooltip title="Edit message">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => startEditMessage(message)}
-                                    sx={{
-                                      position: "absolute",
-                                      top: -7,
-                                      right: -7,
-                                      width: 25,
-                                      height: 25,
-                                      bgcolor: "#fff",
-                                      color: "#6D28D9",
-                                      boxShadow: "0 2px 8px rgba(0,0,0,.12)",
+                                  {isMine && !isRemoved && (
+                                    <MessageTicks message={message} memberIds={memberIds} myId={myId} />
+                                  )}
 
-                                      "&:hover": {
-                                        bgcolor: "#F4F0FA",
-                                      },
-                                    }}
-                                  >
-                                    <Edit
-                                      sx={{
-                                        fontSize: 13,
-                                      }}
-                                    />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                            </Paper>
+                                  {/* Menu is available on ANY non-removed message now —
+                                      not just your own — so "Delete for me" works on
+                                      messages other people sent too. */}
+                                  {!isRemoved && (
+                                    <IconButton
+                                      size="small"
+                                      onClick={(event) =>
+                                        setMessageMenu({ anchor: event.currentTarget, message })
+                                      }
+                                      sx={{ p: 0.15, ml: 0.2 }}
+                                    >
+                                      <MoreVert sx={{ fontSize: 13, color: isMine ? "#fff" : "#A9A2B5", opacity: 0.75 }} />
+                                    </IconButton>
+                                  )}
+                                </Stack>
+                              </Paper>
+                            </Box>
                           </Box>
                         </Box>
                       );
@@ -2074,56 +1965,25 @@ useEffect(() => {
                 )}
               </Box>
 
-              {/* =================================================
-                  MESSAGE COMPOSER
-              ================================================= */}
+              {/* ----- composer ----- */}
 
               <Box
                 sx={{
-                  p: {
-                    xs: 0.8,
-                    sm: 1.2,
-                  },
-
-                  pb: {
-                    xs: "max(8px, env(safe-area-inset-bottom))",
-                    sm: 1.2,
-                  },
-
-                  borderTop: "1px solid #ECE8F3",
-
-                  bgcolor: "#fff",
-
-                  flexShrink: 0,
-
-                  position: "relative",
-
-                  zIndex: 3,
+                  p: { xs: 0.8, sm: 1.2 },
+                  pb: { xs: "max(8px, env(safe-area-inset-bottom))", sm: 1.2 },
+                  borderTop: "1px solid #ECE8F3", bgcolor: "#fff", flexShrink: 0,
                 }}
               >
                 <Stack direction="row" spacing={0.8} alignItems="flex-end">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={sendPhoto}
-                  />
+                  <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={sendPhoto} />
 
-                  <Tooltip title="Send photo">
+                  <Tooltip title="Send photo (text box becomes the caption)">
                     <IconButton
                       onClick={() => fileInputRef.current?.click()}
                       disabled={sendingMessage}
                       sx={{
-                        width: 40,
-                        height: 40,
-                        color: "#7C3AED",
-                        bgcolor: "#F5F1FF",
-                        flexShrink: 0,
-
-                        "&:hover": {
-                          bgcolor: "#EDE5FF",
-                        },
+                        width: 40, height: 40, color: PURPLE, bgcolor: "#F5F1FF", flexShrink: 0,
+                        "&:hover": { bgcolor: "#EDE5FF" },
                       }}
                     >
                       <ImageIcon fontSize="small" />
@@ -2135,7 +1995,7 @@ useEffect(() => {
                     multiline
                     maxRows={4}
                     value={messageText}
-                    onChange={(event) => setMessageText(event.target.value)}
+                    onChange={handleMessageTextChange}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
@@ -2146,23 +2006,8 @@ useEffect(() => {
                     size="small"
                     sx={{
                       "& .MuiOutlinedInput-root": {
-                        borderRadius: 2.5,
-                        bgcolor: "#FAF9FC",
-                        fontSize: 13,
-                        py: 0.3,
+                        borderRadius: 2.5, bgcolor: "#FAF9FC", fontSize: 13, py: 0.3,
                       },
-                    }}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <AttachFile
-                            sx={{
-                              fontSize: 18,
-                              color: "#AAA4B3",
-                            }}
-                          />
-                        </InputAdornment>
-                      ),
                     }}
                   />
 
@@ -2170,29 +2015,13 @@ useEffect(() => {
                     onClick={sendMessage}
                     disabled={sendingMessage || !messageText.trim()}
                     sx={{
-                      width: 42,
-                      height: 42,
-                      bgcolor: "#7C3AED",
-                      color: "#fff",
-                      flexShrink: 0,
-
-                      "&:hover": {
-                        bgcolor: "#6D28D9",
-                      },
-
-                      "&.Mui-disabled": {
-                        bgcolor: "#E7E2EE",
-                        color: "#AAA4B3",
-                      },
+                      width: 42, height: 42, bgcolor: PURPLE, color: "#fff", flexShrink: 0,
+                      "&:hover": { bgcolor: PURPLE_DARK },
+                      "&.Mui-disabled": { bgcolor: "#E7E2EE", color: "#AAA4B3" },
                     }}
                   >
                     {sendingMessage ? (
-                      <CircularProgress
-                        size={18}
-                        sx={{
-                          color: "#fff",
-                        }}
-                      />
+                      <CircularProgress size={18} sx={{ color: "#fff" }} />
                     ) : (
                       <Send fontSize="small" />
                     )}
@@ -2204,9 +2033,102 @@ useEffect(() => {
         </Box>
       </Box>
 
-      {/* =======================================================
-          CREATE TASK DIALOG
-      ======================================================= */}
+      {/* ---------------- message menu ---------------- */}
+
+      <Menu
+        anchorEl={messageMenu?.anchor}
+        open={Boolean(messageMenu)}
+        onClose={() => setMessageMenu(null)}
+      >
+        {messageMenu?.message?.photoUrl && (
+          <MenuItem
+            onClick={() => {
+              downloadImage(messageMenu.message.photoUrl, `task-photo-${messageMenu.message._id}.jpg`);
+              setMessageMenu(null);
+            }}
+            sx={{ fontSize: 13 }}
+          >
+            <Download sx={{ fontSize: 16, mr: 1 }} /> Download photo
+          </MenuItem>
+        )}
+
+        {sameId(messageMenu?.message?.sender, myId) &&
+          (Date.now() - new Date(messageMenu?.message?.createdAt || 0).getTime()) / 36e5 < 24 && (
+            <MenuItem onClick={() => startEditMessage(messageMenu.message)} sx={{ fontSize: 13 }}>
+              <Edit sx={{ fontSize: 16, mr: 1 }} /> Edit message
+            </MenuItem>
+          )}
+
+        {/* Anyone can hide any message for themselves. */}
+        <MenuItem onClick={() => deleteMessageById(messageMenu.message, "me")} sx={{ fontSize: 13 }}>
+          <Delete sx={{ fontSize: 16, mr: 1 }} /> Delete for me
+        </MenuItem>
+
+        {/* Only the sender can wipe it for everyone. */}
+        {sameId(messageMenu?.message?.sender, myId) && (
+          <MenuItem
+            onClick={() => deleteMessageById(messageMenu.message, "everyone")}
+            sx={{ fontSize: 13, color: "#B42318" }}
+          >
+            <Delete sx={{ fontSize: 16, mr: 1 }} /> Delete for everyone
+          </MenuItem>
+        )}
+      </Menu>
+
+      {/* ---------------- photo viewer ---------------- */}
+
+      <Dialog
+        open={Boolean(viewerPhoto)}
+        onClose={() => setViewerPhoto(null)}
+        maxWidth="md"
+        PaperProps={{ sx: { borderRadius: 3, bgcolor: "#141020" } }}
+      >
+        {viewerPhoto && (
+          <>
+            <Box
+              component="img"
+              src={viewerPhoto.photoUrl}
+              alt="Attachment"
+              sx={{ display: "block", maxWidth: "100%", maxHeight: "72vh" }}
+            />
+
+            {viewerPhoto.text && viewerPhoto.text !== "📷 Photo" && (
+              <Typography sx={{ color: "#EDE9F7", fontSize: 13, px: 2, pt: 1.5 }}>
+                {viewerPhoto.text}
+              </Typography>
+            )}
+
+            <DialogActions sx={{ px: 2, pb: 1.5 }}>
+              <Typography sx={{ flex: 1, color: "#9A93AB", fontSize: 11 }}>
+                {viewerPhoto.senderName} • {formatTime(viewerPhoto.createdAt)}
+              </Typography>
+
+              <Button
+                startIcon={<Download />}
+                onClick={() => downloadImage(viewerPhoto.photoUrl, `task-photo-${viewerPhoto._id}.jpg`)}
+                sx={{ textTransform: "none", fontWeight: 700, color: "#DCD3F5" }}
+              >
+                Download
+              </Button>
+
+              {sameId(viewerPhoto.sender, myId) && (
+                <Button
+                  startIcon={<Delete />}
+                  onClick={() => {
+                    deleteMessageById(viewerPhoto, "everyone");
+                    setViewerPhoto(null);
+                  }}
+                  sx={{ textTransform: "none", fontWeight: 700, color: "#FCA5A5" }}
+                >
+                  Delete
+                </Button>
+              )}
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* ---------------- create task ---------------- */}
 
       <Dialog
         open={createOpen}
@@ -2218,32 +2140,12 @@ useEffect(() => {
         }}
         fullWidth
         maxWidth="sm"
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-            m: {
-              xs: 1.5,
-              sm: 2,
-            },
-          },
-        }}
+        PaperProps={{ sx: { borderRadius: 3, m: { xs: 1.5, sm: 2 } } }}
       >
-        <DialogTitle
-          sx={{
-            fontWeight: 800,
-            pb: 1,
-          }}
-        >
-          Create New Task
-        </DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Create New Task</DialogTitle>
 
         <DialogContent>
-          <Stack
-            spacing={2}
-            sx={{
-              pt: 1,
-            }}
-          >
+          <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
               fullWidth
               label="Task title"
@@ -2255,23 +2157,14 @@ useEffect(() => {
             <TextField
               fullWidth
               multiline
-              minRows={3}
+              minRows={2}
               label="Description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
 
-            {/* MODE */}
-
             <FormControl fullWidth>
-              <Typography
-                sx={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  mb: 0.7,
-                  color: "#57505F",
-                }}
-              >
+              <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
                 Assignment type
               </Typography>
 
@@ -2279,53 +2172,26 @@ useEffect(() => {
                 value={mode}
                 onChange={(event) => {
                   setMode(event.target.value);
-
                   setAssignedTo("");
                   setAssignedToList([]);
                 }}
-                sx={{
-                  borderRadius: 2,
-                }}
+                sx={{ borderRadius: 2 }}
               >
                 {MODE_OPTIONS.map((item) => (
                   <MenuItem key={item.value} value={item.value}>
                     <Box>
-                      <Typography
-                        sx={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {item.label}
-                      </Typography>
-
-                      <Typography
-                        sx={{
-                          fontSize: 10.5,
-                          color: "#918A9A",
-                        }}
-                      >
-                        {item.description}
-                      </Typography>
+                      <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{item.label}</Typography>
+                      <Typography sx={{ fontSize: 10.5, color: "#918A9A" }}>{item.description}</Typography>
                     </Box>
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
-            {/* INDIVIDUAL */}
-
-            {mode === "INDIVIDUAL" && (
+            {mode === "INDIVIDUAL" ? (
               <FormControl fullWidth>
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    mb: 0.7,
-                    color: "#57505F",
-                  }}
-                >
-                  Select user
+                <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
+                  Assign to
                 </Typography>
 
                 <Select
@@ -2333,68 +2199,33 @@ useEffect(() => {
                   onChange={(event) => setAssignedTo(event.target.value)}
                   displayEmpty
                   disabled={usersLoading}
-                  sx={{
-                    borderRadius: 2,
-                  }}
+                  sx={{ borderRadius: 2 }}
                 >
-                  <MenuItem value="">Select user</MenuItem>
+                  <MenuItem value="">Select a person</MenuItem>
 
                   {users.map((member) => (
                     <MenuItem key={member._id} value={member._id}>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar
-                          sx={{
-                            width: 28,
-                            height: 28,
-                            fontSize: 11,
-                            bgcolor: "#EEE7FF",
-                            color: "#6D28D9",
-                          }}
-                        >
+                        <Avatar sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
                           {getInitial(member)}
                         </Avatar>
-
                         <Box>
-                          <Typography
-                            sx={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                            }}
-                          >
+                          <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
                             {getUserName(member)}
                           </Typography>
-
-                          {member.email && (
-                            <Typography
-                              sx={{
-                                fontSize: 10,
-                                color: "#8E8797",
-                              }}
-                            >
-                              {member.email}
-                            </Typography>
-                          )}
+                          <Typography sx={{ fontSize: 10, color: "#8E8797", textTransform: "capitalize" }}>
+                            {member.role}
+                          </Typography>
                         </Box>
                       </Stack>
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
-            )}
-
-            {/* SEPARATE / GROUP */}
-
-            {(mode === "SEPARATE" || mode === "GROUP") && (
+            ) : (
               <FormControl fullWidth>
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    mb: 0.7,
-                    color: "#57505F",
-                  }}
-                >
-                  Select users
+                <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
+                  Select people
                 </Typography>
 
                 <Select
@@ -2404,46 +2235,31 @@ useEffect(() => {
                     setAssignedToList(
                       typeof event.target.value === "string"
                         ? event.target.value.split(",")
-                        : event.target.value,
+                        : event.target.value
                     )
                   }
                   displayEmpty
                   disabled={usersLoading}
-                  sx={{
-                    borderRadius: 2,
-                  }}
+                  sx={{ borderRadius: 2 }}
                   renderValue={(selected) => {
                     if (!selected.length) {
                       return (
-                        <Typography
-                          sx={{
-                            color: "#9A94A3",
-                            fontSize: 13,
-                          }}
-                        >
-                          Select users
+                        <Typography sx={{ color: "#9A94A3", fontSize: 13 }}>
+                          Select people
                         </Typography>
                       );
                     }
 
                     return (
-                      <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                        {selected.map((id) => {
-                          const member = users.find(
-                            (item) => String(item._id) === String(id),
-                          );
-
-                          return (
-                            <Chip
-                              key={id}
-                              size="small"
-                              label={getUserName(member)}
-                              sx={{
-                                borderRadius: 1.5,
-                              }}
-                            />
-                          );
-                        })}
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" rowGap={0.5}>
+                        {selected.map((id) => (
+                          <Chip
+                            key={id}
+                            size="small"
+                            label={getUserName(users.find((item) => sameId(item._id, id)))}
+                            sx={{ borderRadius: 1.5 }}
+                          />
+                        ))}
                       </Stack>
                     );
                   }}
@@ -2451,24 +2267,10 @@ useEffect(() => {
                   {users.map((member) => (
                     <MenuItem key={member._id} value={member._id}>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar
-                          sx={{
-                            width: 28,
-                            height: 28,
-                            fontSize: 11,
-                            bgcolor: "#EEE7FF",
-                            color: "#6D28D9",
-                          }}
-                        >
+                        <Avatar sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
                           {getInitial(member)}
                         </Avatar>
-
-                        <Typography
-                          sx={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                          }}
-                        >
+                        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>
                           {getUserName(member)}
                         </Typography>
                       </Stack>
@@ -2478,54 +2280,113 @@ useEffect(() => {
               </FormControl>
             )}
 
-            {/* DUE DATE */}
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                fullWidth
+                type="date"
+                label="Due date"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
 
-            <TextField
-              fullWidth
-              type="date"
-              label="Due date"
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
-              InputLabelProps={{
-                shrink: true,
-              }}
-            />
+              <FormControl fullWidth>
+                <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
+                  Priority
+                </Typography>
+                <Select
+                  value={priority}
+                  onChange={(event) => setPriority(event.target.value)}
+                  sx={{ borderRadius: 2 }}
+                >
+                  {PRIORITY_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      <Stack direction="row" alignItems="center" spacing={0.8}>
+                        <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: option.color }} />
+                        <Typography sx={{ fontSize: 13 }}>{option.label}</Typography>
+                      </Stack>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
 
-            {/* RECURRENCE */}
+            {/* checklist builder */}
 
-            <Paper
-              elevation={0}
-              sx={{
-                p: 1.5,
-                borderRadius: 2.5,
-                border: "1px solid #EAE5F2",
-                bgcolor: "#FBFAFD",
-              }}
-            >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                spacing={1}
-              >
+            <Paper elevation={0} sx={{ p: 1.5, borderRadius: 2.5, border: "1px solid #EAE5F2", bgcolor: "#FBFAFD" }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 800, mb: 0.3 }}>Checklist</Typography>
+              <Typography sx={{ fontSize: 10.5, color: "#918A9A", mb: 1.2 }}>
+                Break the task into steps. Progress shows at the top of the chat.
+              </Typography>
+
+              {newChecklist.map((item, index) => (
+                <Stack key={`${item}-${index}`} direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.4 }}>
+                  <Check sx={{ fontSize: 15, color: "#C0B8CE" }} />
+                  <Typography sx={{ flex: 1, fontSize: 12.5 }}>{item}</Typography>
+                  <IconButton
+                    size="small"
+                    onClick={() => setNewChecklist((previous) => previous.filter((_, i) => i !== index))}
+                    sx={{ p: 0.4 }}
+                  >
+                    <Close sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Stack>
+              ))}
+
+              <Stack direction="row" spacing={0.8} sx={{ mt: 1 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Add a step..."
+                  value={checklistDraft}
+                  onChange={(event) => setChecklistDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && checklistDraft.trim()) {
+                      event.preventDefault();
+                      setNewChecklist((previous) => [...previous, checklistDraft.trim()]);
+                      setChecklistDraft("");
+                    }
+                  }}
+                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2, bgcolor: "#fff", fontSize: 12.5 } }}
+                />
+
+                <IconButton
+                  onClick={() => {
+                    if (!checklistDraft.trim()) return;
+                    setNewChecklist((previous) => [...previous, checklistDraft.trim()]);
+                    setChecklistDraft("");
+                  }}
+                  sx={{ width: 36, height: 36, bgcolor: "#F3EEFF", color: PURPLE }}
+                >
+                  <Add sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Stack>
+
+              <FormControl fullWidth size="small" sx={{ mt: 1.2 }}>
+                <Select
+                  value={checklistRepeat}
+                  onChange={(event) => setChecklistRepeat(event.target.value)}
+                  displayEmpty
+                  sx={{ borderRadius: 2, fontSize: 12.5, bgcolor: "#fff" }}
+                >
+                  <MenuItem value="">Checklist does not repeat</MenuItem>
+                  {RECURRENCE_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      Reset every {option.label.toLowerCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Paper>
+
+            {/* task recurrence */}
+
+            <Paper elevation={0} sx={{ p: 1.5, borderRadius: 2.5, border: "1px solid #EAE5F2", bgcolor: "#FBFAFD" }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
                 <Box>
-                  <Typography
-                    sx={{
-                      fontSize: 13,
-                      fontWeight: 800,
-                    }}
-                  >
-                    Recurring task
-                  </Typography>
-
-                  <Typography
-                    sx={{
-                      fontSize: 10.5,
-                      color: "#918A9A",
-                      mt: 0.2,
-                    }}
-                  >
-                    Automatically create the next task after completion.
+                  <Typography sx={{ fontSize: 13, fontWeight: 800 }}>Recurring task</Typography>
+                  <Typography sx={{ fontSize: 10.5, color: "#918A9A", mt: 0.2 }}>
+                    Creates a fresh task automatically after completion.
                   </Typography>
                 </Box>
 
@@ -2534,18 +2395,8 @@ useEffect(() => {
                   variant={recurrenceEnabled ? "contained" : "outlined"}
                   onClick={() => setRecurrenceEnabled((previous) => !previous)}
                   sx={{
-                    minWidth: 80,
-                    borderRadius: 2,
-                    textTransform: "none",
-                    fontWeight: 700,
-
-                    ...(recurrenceEnabled && {
-                      bgcolor: "#7C3AED",
-
-                      "&:hover": {
-                        bgcolor: "#6D28D9",
-                      },
-                    }),
+                    minWidth: 80, borderRadius: 2, textTransform: "none", fontWeight: 700,
+                    ...(recurrenceEnabled && { bgcolor: PURPLE, "&:hover": { bgcolor: PURPLE_DARK } }),
                   }}
                 >
                   {recurrenceEnabled ? "Enabled" : "Off"}
@@ -2553,60 +2404,36 @@ useEffect(() => {
               </Stack>
 
               {recurrenceEnabled && (
-                <FormControl
-                  fullWidth
-                  size="small"
-                  sx={{
-                    mt: 1.5,
-                  }}
-                >
+                <FormControl fullWidth size="small" sx={{ mt: 1.5 }}>
                   <Select
                     value={recurrenceFrequency}
-                    onChange={(event) =>
-                      setRecurrenceFrequency(event.target.value)
-                    }
-                    sx={{
-                      borderRadius: 2,
-                    }}
+                    onChange={(event) => setRecurrenceFrequency(event.target.value)}
+                    sx={{ borderRadius: 2, bgcolor: "#fff" }}
                   >
                     {RECURRENCE_OPTIONS.map((item) => (
-                      <MenuItem key={item.value} value={item.value}>
-                        {item.label}
-                      </MenuItem>
+                      <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               )}
             </Paper>
 
-            {(mode === "SEPARATE" || mode === "GROUP") &&
-              assignedToList.length > 0 &&
-              assignedToList.length < 2 && (
-                <Alert severity="info">
-                  Select at least two users for{" "}
-                  {mode === "GROUP" ? "a group task" : "separate assignment"}.
-                </Alert>
-              )}
+            {mode !== "INDIVIDUAL" && assignedToList.length === 1 && (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                Select at least two people for {mode === "GROUP" ? "a group task" : "separate assignment"}.
+              </Alert>
+            )}
           </Stack>
         </DialogContent>
 
-        <DialogActions
-          sx={{
-            px: 3,
-            pb: 2.5,
-          }}
-        >
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button
             onClick={() => {
               setCreateOpen(false);
               resetCreateForm();
             }}
             disabled={creating}
-            sx={{
-              textTransform: "none",
-              fontWeight: 700,
-              color: "#686172",
-            }}
+            sx={{ textTransform: "none", fontWeight: 700, color: "#686172" }}
           >
             Cancel
           </Button>
@@ -2615,27 +2442,10 @@ useEffect(() => {
             variant="contained"
             onClick={handleCreateTask}
             disabled={creating}
-            startIcon={
-              creating ? (
-                <CircularProgress
-                  size={16}
-                  sx={{
-                    color: "#fff",
-                  }}
-                />
-              ) : (
-                <Add />
-              )
-            }
+            startIcon={creating ? <CircularProgress size={16} sx={{ color: "#fff" }} /> : <Add />}
             sx={{
-              borderRadius: 2,
-              textTransform: "none",
-              fontWeight: 700,
-              bgcolor: "#7C3AED",
-
-              "&:hover": {
-                bgcolor: "#6D28D9",
-              },
+              borderRadius: 2, textTransform: "none", fontWeight: 700,
+              bgcolor: PURPLE, "&:hover": { bgcolor: PURPLE_DARK },
             }}
           >
             {creating ? "Creating..." : "Create Task"}
@@ -2643,28 +2453,16 @@ useEffect(() => {
         </DialogActions>
       </Dialog>
 
-      {/* =======================================================
-          EDIT MESSAGE
-      ======================================================= */}
+      {/* ---------------- edit message ---------------- */}
 
       <Dialog
         open={Boolean(editingMessage)}
-        onClose={cancelEditMessage}
+        onClose={() => setEditingMessage(null)}
         fullWidth
         maxWidth="xs"
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-          },
-        }}
+        PaperProps={{ sx: { borderRadius: 3 } }}
       >
-        <DialogTitle
-          sx={{
-            fontWeight: 800,
-          }}
-        >
-          Edit Message
-        </DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Edit Message</DialogTitle>
 
         <DialogContent>
           <TextField
@@ -2674,44 +2472,22 @@ useEffect(() => {
             minRows={3}
             value={editText}
             onChange={(event) => setEditText(event.target.value)}
-            sx={{
-              mt: 1,
-
-              "& .MuiOutlinedInput-root": {
-                borderRadius: 2,
-              },
-            }}
+            sx={{ mt: 1, "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
           />
         </DialogContent>
 
-        <DialogActions
-          sx={{
-            px: 3,
-            pb: 2,
-          }}
-        >
-          <Button
-            onClick={cancelEditMessage}
-            sx={{
-              textTransform: "none",
-              fontWeight: 700,
-            }}
-          >
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEditingMessage(null)} sx={{ textTransform: "none", fontWeight: 700 }}>
             Cancel
           </Button>
 
           <Button
             variant="contained"
             onClick={saveEditedMessage}
+            disabled={!editText.trim()}
             sx={{
-              borderRadius: 2,
-              textTransform: "none",
-              fontWeight: 700,
-              bgcolor: "#7C3AED",
-
-              "&:hover": {
-                bgcolor: "#6D28D9",
-              },
+              borderRadius: 2, textTransform: "none", fontWeight: 700,
+              bgcolor: PURPLE, "&:hover": { bgcolor: PURPLE_DARK },
             }}
           >
             Save Changes
@@ -2719,53 +2495,28 @@ useEffect(() => {
         </DialogActions>
       </Dialog>
 
-      {/* =======================================================
-          DELETE TASK
-      ======================================================= */}
+      {/* ---------------- delete task ---------------- */}
 
       <Dialog
         open={deleteDialogOpen}
         onClose={() => !deleting && setDeleteDialogOpen(false)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 3,
-          },
-        }}
+        PaperProps={{ sx: { borderRadius: 3 } }}
       >
-        <DialogTitle
-          sx={{
-            fontWeight: 800,
-          }}
-        >
-          Delete Task?
-        </DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Delete Task?</DialogTitle>
 
         <DialogContent>
-          <Typography
-            sx={{
-              color: "#746D7D",
-              fontSize: 13,
-            }}
-          >
-            This will permanently delete this task and its conversation.
+          <Typography sx={{ color: "#746D7D", fontSize: 13 }}>
+            This permanently deletes the task, its checklist and the whole conversation.
           </Typography>
         </DialogContent>
 
-        <DialogActions
-          sx={{
-            px: 3,
-            pb: 2.5,
-          }}
-        >
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button
             onClick={() => setDeleteDialogOpen(false)}
             disabled={deleting}
-            sx={{
-              textTransform: "none",
-              fontWeight: 700,
-            }}
+            sx={{ textTransform: "none", fontWeight: 700 }}
           >
             Cancel
           </Button>
@@ -2775,23 +2526,8 @@ useEffect(() => {
             color="error"
             onClick={deleteCurrentTask}
             disabled={deleting}
-            startIcon={
-              deleting ? (
-                <CircularProgress
-                  size={16}
-                  sx={{
-                    color: "#fff",
-                  }}
-                />
-              ) : (
-                <Delete />
-              )
-            }
-            sx={{
-              borderRadius: 2,
-              textTransform: "none",
-              fontWeight: 700,
-            }}
+            startIcon={deleting ? <CircularProgress size={16} sx={{ color: "#fff" }} /> : <Delete />}
+            sx={{ borderRadius: 2, textTransform: "none", fontWeight: 700 }}
           >
             {deleting ? "Deleting..." : "Delete Task"}
           </Button>
@@ -2800,10 +2536,6 @@ useEffect(() => {
     </Box>
   );
 }
-
-/* =========================================================
-   PROTECTED PAGE
-========================================================= */
 
 export default function TasksPage() {
   return (

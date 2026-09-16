@@ -1,60 +1,49 @@
 const PushSubscription = require("../models/PushSubscription");
-const { asyncHandler } = require("../middleware/errorHandler");
 
-const getVapidPublicKey = (req, res) => {
-  res.json({
-    publicKey: process.env.VAPID_PUBLIC_KEY,
-  });
+// GET /push/public-key — the frontend needs this to call
+// pushManager.subscribe({ applicationServerKey: <this> }).
+const getPublicKey = (req, res) => {
+  if (!process.env.VAPID_PUBLIC_KEY) {
+    return res.status(503).json({ message: "Push notifications are not configured on this server" });
+  }
+  return res.json({ publicKey: process.env.VAPID_PUBLIC_KEY });
 };
 
-const subscribe = asyncHandler(async (req, res) => {
-  const { endpoint, keys } = req.body;
+// POST /push/subscribe   { endpoint, keys: { p256dh, auth } }
+const subscribe = async (req, res) => {
+  try {
+    const { endpoint, keys } = req.body;
 
-  if (!endpoint || !keys?.p256dh || !keys?.auth) {
-    return res.status(400).json({
-      message: "Invalid push subscription.",
-    });
-  }
-
-  await PushSubscription.findOneAndUpdate(
-    {
-      endpoint,
-      user: req.user._id,
-    },
-    {
-      user: req.user._id,
-      endpoint,
-      keys,
-    },
-    {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
+    if (!endpoint || !keys?.p256dh || !keys?.auth) {
+      return res.status(400).json({ message: "Invalid subscription" });
     }
-  );
 
-  res.status(201).json({
-    message: "Subscribed to notifications.",
-  });
-});
+    await PushSubscription.findOneAndUpdate(
+      { endpoint },
+      { user: req.user._id, endpoint, keys },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-const unsubscribe = asyncHandler(async (req, res) => {
-  const { endpoint } = req.body;
-
-  if (endpoint) {
-    await PushSubscription.deleteOne({
-      endpoint,
-      user: req.user._id,
-    });
+    return res.status(201).json({ ok: true });
+  } catch (err) {
+    console.error("push subscribe error:", err);
+    return res.status(500).json({ message: "Could not save subscription" });
   }
-
-  res.json({
-    message: "Unsubscribed.",
-  });
-});
-
-module.exports = {
-  getVapidPublicKey,
-  subscribe,
-  unsubscribe,
 };
+
+// POST /push/unsubscribe   { endpoint }
+const unsubscribe = async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (!endpoint) return res.status(400).json({ message: "endpoint required" });
+
+    await PushSubscription.deleteOne({ endpoint, user: req.user._id });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("push unsubscribe error:", err);
+    return res.status(500).json({ message: "Could not remove subscription" });
+  }
+};
+
+module.exports = { getPublicKey, subscribe, unsubscribe };

@@ -22,15 +22,18 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
+    // FIX: taskController already checked for "superadmin" but the enum
+    // only allowed owner/member — so a superadmin could never actually
+    // be saved and all those checks were dead code.
     role: {
       type: String,
-      enum: ["owner", "member"],
+      enum: ["superadmin", "owner", "member"],
       default: "member",
     },
 
     /*
-     * For member accounts this stores the owner
-     * who created that member.
+     * For member accounts this stores the owner who created them.
+     * Superadmin accounts have createdBy = null.
      */
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -43,16 +46,10 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-/*
-=========================================================
-PASSWORD HASH
-=========================================================
-*/
+/* ====================== PASSWORD HASH ====================== */
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) {
@@ -64,23 +61,13 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-/*
-=========================================================
-PASSWORD CHECK
-=========================================================
-*/
+/* ====================== PASSWORD CHECK ===================== */
 
 userSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-/*
-=========================================================
-SAFE USER OBJECT
-=========================================================
-
-Never send password to frontend.
-*/
+/* ====================== SAFE OBJECT ======================== */
 
 userSchema.methods.toSafeObject = function () {
   return {

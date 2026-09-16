@@ -30,6 +30,9 @@ import ChecklistRtlRoundedIcon from "@mui/icons-material/ChecklistRtlRounded";
 import { usePathname, useRouter } from "next/navigation";
 
 import { getStoredUser, clearSession } from "../lib/auth";
+// NEW: task/checklist bell — fully self-contained, see
+// components/NotificationBell.jsx
+import NotificationBell from "./NotificationBell";
 
 export default function Navbar() {
   const router = useRouter();
@@ -87,8 +90,9 @@ export default function Navbar() {
     },
   ];
 
-  // Owner only
-  if (user?.role === "owner") {
+  // Owner AND superadmin both manage users now — superadmin needs the
+  // same "Users" screen to create owners, deactivate accounts, etc.
+  if (user?.role === "owner" || user?.role === "superadmin") {
     NAV_ITEMS.push({
       label: "Users",
       href: "/users",
@@ -143,6 +147,8 @@ export default function Navbar() {
   const userRole =
     user?.role === "owner"
       ? "Owner"
+      : user?.role === "superadmin"
+      ? "Superadmin"
       : "Member";
 
   return (
@@ -332,6 +338,15 @@ export default function Navbar() {
                 Manage your expenses smartly
               </Typography>
             </Box>
+          </Box>
+
+          {/* =================================================
+              NOTIFICATION BELL
+              Visible on every breakpoint — it's the one thing
+              worth reaching without opening the drawer.
+          ================================================= */}
+          <Box sx={{ flexShrink: 0, color: "#FFFFFF" }}>
+            <NotificationBell />
           </Box>
 
           {/* =================================================

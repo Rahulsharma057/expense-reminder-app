@@ -1,166 +1,187 @@
-  require("dotenv").config();
+require("dotenv").config();
 
-  const express = require("express");
-  const cors = require("cors");
-  const http = require("http");
+const express = require("express");
+const cors = require("cors");
+const http = require("http");
 
-  const connectDB = require("./config/db");
-  const startReminderScheduler = require("./reminderScheduler");
-  const { notFound, errorHandler } = require("./middleware/errorHandler");
-  const { initSocket } = require("./utils/socket");
+const connectDB = require("./config/db");
+const startReminderScheduler = require("./reminderScheduler");
+const { notFound, errorHandler } = require("./middleware/errorHandler");
+const { initSocket } = require("./utils/socket");
 
-  const authRoutes = require("./routes/authRoutes");
-  const userRoutes = require("./routes/userRoutes");
-  const expenseRoutes = require("./routes/expenseRoutes");
-  const reminderRoutes = require("./routes/reminderRoutes");
-  const pushRoutes = require("./routes/pushRoutes");
-  const dashboardRoutes = require("./routes/dashboardRoutes");
-  const taskRoutes = require("./routes/taskRoutes");
+const authRoutes = require("./routes/authRoutes");
+const userRoutes = require("./routes/userRoutes");
+const expenseRoutes = require("./routes/expenseRoutes");
+const reminderRoutes = require("./routes/reminderRoutes");
+const pushRoutes = require("./routes/pushRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
-  const app = express();
+// NEW: notification bell + task templates. These are new files, no
+// name collision with anything that already exists.
+const notificationRoutes = require("./routes/notificationRoutes");
+const templateRoutes = require("./routes/templateRoutes");
 
-  /* =========================================================
-    CORS CONFIGURATION
-  ========================================================= */
+// NEW: daily "due tomorrow" reminder job for tasks. Separate from
+// your existing expense reminderScheduler — this one only looks at
+// the Task collection.
+const { startDueDateReminderJob } = require("./jobs/dueDateReminder");
 
-  // Add your actual Vercel production URL here if needed.
-  const allowedOrigins = [
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
+const app = express();
 
-    // Production frontend
-    // "https://your-app.vercel.app",
-  ];
+/* =========================================================
+  CORS CONFIGURATION
+========================================================= */
 
-  app.use(
-    cors({
-      origin: function (origin, callback) {
-        // Allow requests without Origin
-        // Example: Postman / server-to-server / UptimeRobot
-        if (!origin) {
-          return callback(null, true);
-        }
+// Add your actual Vercel production URL here if needed.
+const allowedOrigins = [
+  "http://localhost:3001",
+  "http://127.0.0.1:3001",
 
-        // Allow localhost
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        }
+  // Production frontend
+  // "https://your-app.vercel.app",
+];
 
-        // Allow all Vercel deployments / preview URLs
-        if (
-          origin.startsWith("https://") &&
-          origin.endsWith(".vercel.app")
-        ) {
-          return callback(null, true);
-        }
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests without Origin
+      // Example: Postman / server-to-server / UptimeRobot
+      if (!origin) {
+        return callback(null, true);
+      }
 
-        console.log("❌ CORS blocked:", origin);
+      // Allow localhost
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
 
-        return callback(new Error("Not allowed by CORS"));
-      },
+      // Allow all Vercel deployments / preview URLs
+      if (
+        origin.startsWith("https://") &&
+        origin.endsWith(".vercel.app")
+      ) {
+        return callback(null, true);
+      }
 
-      credentials: true,
+      console.log("❌ CORS blocked:", origin);
 
-      methods: [
-        "GET",
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE",
-        "OPTIONS",
-      ],
+      return callback(new Error("Not allowed by CORS"));
+    },
 
-      allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-Requested-With",
-      ],
-    })
-  );
+    credentials: true,
 
-  /* =========================================================
-    MIDDLEWARE
-  ========================================================= */
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
 
-  app.use(
-    express.json({
-      limit: "5mb",
-    })
-  );
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+    ],
+  })
+);
 
-  app.use(
-    express.urlencoded({
-      extended: true,
-    })
-  );
+/* =========================================================
+  MIDDLEWARE
+========================================================= */
 
-  /* =========================================================
-    HEALTH CHECK
-  ========================================================= */
+app.use(
+  express.json({
+    limit: "5mb",
+  })
+);
 
-  // Use this URL in UptimeRobot:
-  //
-  // https://expense-reminder-app.onrender.com/api/health
-  //
-  // It does NOT require login/authentication.
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
 
-  app.get("/api/health", (req, res) => {
-    res.status(200).json({
-      ok: true,
-      message: "Expense Reminder API is running",
-      timestamp: new Date().toISOString(),
-    });
+/* =========================================================
+  HEALTH CHECK
+========================================================= */
+
+// Use this URL in UptimeRobot:
+//
+// https://expense-reminder-app.onrender.com/api/health
+//
+// It does NOT require login/authentication.
+
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    message: "Expense Reminder API is running",
+    timestamp: new Date().toISOString(),
   });
+});
 
-  /* =========================================================
-    ROUTES
-  ========================================================= */
+/* =========================================================
+  ROUTES
+========================================================= */
 
-  app.use("/api/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 
-  app.use("/api/users", userRoutes);
+app.use("/api/users", userRoutes);
 
-  app.use("/api/expenses", expenseRoutes);
+app.use("/api/expenses", expenseRoutes);
 
-  app.use("/api/reminders", reminderRoutes);
+app.use("/api/reminders", reminderRoutes);
 
-  app.use("/api/push", pushRoutes);
+app.use("/api/push", pushRoutes);
 
-  app.use("/api/dashboard", dashboardRoutes);
-  app.use("/api/recipients", require("./routes/recipients"));
-  app.use("/api/udhaar", require("./routes/udhaarRoutes"));
-  // Task assignment + WhatsApp-style task chat (added)
-  app.use("/api/tasks", taskRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/recipients", require("./routes/recipients"));
+app.use("/api/udhaar", require("./routes/udhaarRoutes"));
+// Task assignment + WhatsApp-style task chat (added)
+app.use("/api/tasks", taskRoutes);
 app.use("/api/meetings", require("./routes/meetingRoutes"));
-  /* =========================================================
-    ERROR HANDLING
-  ========================================================= */
 
-  app.use(notFound);
+// NEW: notification bell (list / unread-count / mark-read) and
+// reusable task checklist templates.
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/templates", templateRoutes);
 
-  app.use(errorHandler);
+/* =========================================================
+  ERROR HANDLING
+========================================================= */
 
-  /* =========================================================
-    SERVER
-    Wrapped in a plain http server (instead of app.listen directly)
-    so Socket.io can attach to the same server for realtime task chat.
-  ========================================================= */
+app.use(notFound);
 
-  const PORT = process.env.PORT || 5001;
+app.use(errorHandler);
 
-  const server = http.createServer(app);
-  initSocket(server);
+/* =========================================================
+  SERVER
+  Wrapped in a plain http server (instead of app.listen directly)
+  so Socket.io can attach to the same server for realtime task chat.
+========================================================= */
 
-  connectDB()
-    .then(() => {
-      server.listen(PORT, () => {
-        console.log(`✅ Server running on port ${PORT}`);
+const PORT = process.env.PORT || 5001;
 
-        // Start reminder scheduler
-        startReminderScheduler();
-      });
-    })
-    .catch((error) => {
-      console.error("❌ Database connection failed:", error);
-      process.exit(1);
+const server = http.createServer(app);
+initSocket(server);
+
+connectDB()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+
+      // Start reminder scheduler
+      startReminderScheduler();
+
+      // NEW: daily 09:00 job that notifies people about tasks due
+      // tomorrow. Safe to start even if VAPID/web-push isn't
+      // configured — it still creates in-app notifications either way.
+      startDueDateReminderJob();
     });
+  })
+  .catch((error) => {
+    console.error("❌ Database connection failed:", error);
+    process.exit(1);
+  });
