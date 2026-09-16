@@ -30,9 +30,8 @@ import ChecklistRtlRoundedIcon from "@mui/icons-material/ChecklistRtlRounded";
 import { usePathname, useRouter } from "next/navigation";
 
 import { getStoredUser, clearSession } from "../lib/auth";
-// NEW: task/checklist bell — fully self-contained, see
-// components/NotificationBell.jsx
-import NotificationBell from "./NotificationBell";
+
+import NotificationBell from "./Notificationbell";
 
 export default function Navbar() {
   const router = useRouter();
