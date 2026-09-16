@@ -80,6 +80,11 @@ export default function Navbar() {
       href: "/udhaar",
       icon: <ChecklistRtlRoundedIcon />,
     },
+        {
+      label: "Meetings",
+      href: "/meetings",
+      icon: <ChecklistRtlRoundedIcon />,
+    },
   ];
 
   // Owner only
