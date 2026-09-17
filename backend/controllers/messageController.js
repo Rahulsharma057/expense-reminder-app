@@ -118,13 +118,23 @@ const serializeMessage = (message, viewerId) => {
     return { ...plain, text: "", fileUrl: "", hiddenForMe: true };
   }
 
-  if (plain.type === "photo" && plain.fileUrl) {
-    return {
-      ...plain,
-      thumbUrl: chatThumbUrl(plain.fileUrl),
-      viewerUrl: viewerUrl(plain.fileUrl),
-    };
-  }
+if (plain.type === "photo" && plain.fileUrl) {
+  const fullPhotoUrl = plain.fileUrl;
+
+  return {
+    ...plain,
+
+    // Main/original Cloudinary image
+    photoUrl: fullPhotoUrl,
+
+    // Existing fields — keep them for backward compatibility
+    fileUrl: fullPhotoUrl,
+
+    // Thumbnail / viewer URLs
+    thumbUrl: chatThumbUrl(fullPhotoUrl),
+    viewerUrl: viewerUrl(fullPhotoUrl),
+  };
+}
 
   return plain;
 };
