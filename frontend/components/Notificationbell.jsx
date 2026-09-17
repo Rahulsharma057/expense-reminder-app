@@ -124,7 +124,7 @@ export default function NotificationBell() {
 
   return (
     <>
-      {/* color: "inherit" picks up whatever color the parent sets —
+      {/* color: "inherit" picks up whatever color the parent setsss —
           works on the purple navbar (white) and anywhere else (dark). */}
       <IconButton onClick={openMenu} sx={{ color: "inherit" }}>
         <Badge
