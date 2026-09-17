@@ -41,7 +41,7 @@ import { toast } from "react-toastify";
 import { getStoredUser, clearSession } from "../lib/auth";
 // NEW: task/checklist bell — fully self-contained, see
 // components/NotificationBell.jsx
-import NotificationBell from "./NotificationBell";
+import NotificationBell from "./Notificationbell";
 // NEW: profile photo upload
 import { uploadMyAvatar } from "../lib/userApi";
 
