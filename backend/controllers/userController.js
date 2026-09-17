@@ -1,15 +1,26 @@
 const User = require("../models/User");
 const { asyncHandler } = require("../middleware/errorHandler");
-
-const isSuperAdmin = (role) =>
-  String(role || "").toLowerCase() === "superadmin";
-
-const isOwner = (role) => String(role || "").toLowerCase() === "owner";
+const { cloudinary } = require("../utils/cloudinary");
 
 /*
-=========================================================
-CREATE USER
-=========================================================
+|--------------------------------------------------------------------------
+| ROLE HELPERS
+|--------------------------------------------------------------------------
+*/
+
+const normalizeRole = (role) =>
+  String(role || "").trim().toLowerCase();
+
+const isSuperAdmin = (role) =>
+  normalizeRole(role) === "superadmin";
+
+const isOwner = (role) =>
+  normalizeRole(role) === "owner";
+
+/*
+|--------------------------------------------------------------------------
+| CREATE USER
+|--------------------------------------------------------------------------
 */
 
 const createUser = asyncHandler(async (req, res) => {
@@ -27,17 +38,37 @@ const createUser = asyncHandler(async (req, res) => {
     });
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | Default role
+  |--------------------------------------------------------------------------
+  */
+
   let newRole = "member";
 
+  /*
+  |--------------------------------------------------------------------------
+  | Only SuperAdmin can create Owner
+  |--------------------------------------------------------------------------
+  */
+
   if (isSuperAdmin(req.user.role)) {
-    if (role === "owner" || role === "member") {
-      newRole = role;
+    const requestedRole = normalizeRole(role);
+
+    if (requestedRole === "owner") {
+      newRole = "owner";
+    } else {
+      newRole = "member";
     }
   }
 
-  const normalizedUsername = username.trim().toLowerCase();
+  const normalizedUsername = username
+    .trim()
+    .toLowerCase();
 
-  const existing = await User.findOne({ username: normalizedUsername });
+  const existing = await User.findOne({
+    username: normalizedUsername,
+  });
 
   if (existing) {
     return res.status(400).json({
@@ -58,17 +89,37 @@ const createUser = asyncHandler(async (req, res) => {
 });
 
 /*
-=========================================================
-LIST USERS
-=========================================================
+|--------------------------------------------------------------------------
+| USER VISIBILITY
+|--------------------------------------------------------------------------
 */
 
 const buildVisibilityFilter = (user) => {
-  if (isSuperAdmin(user.role)) {
+  const role = normalizeRole(user.role);
+
+  /*
+  |--------------------------------------------------------------------------
+  | SuperAdmin
+  |--------------------------------------------------------------------------
+  */
+
+  if (role === "superadmin") {
     return {};
   }
 
-  if (isOwner(user.role)) {
+  /*
+  |--------------------------------------------------------------------------
+  | Owner
+  |--------------------------------------------------------------------------
+  |
+  | Owner can see:
+  | - Himself
+  | - Users created by him
+  | - SuperAdmin
+  |--------------------------------------------------------------------------
+  */
+
+  if (role === "owner") {
     return {
       $or: [
         { _id: user._id },
@@ -77,6 +128,19 @@ const buildVisibilityFilter = (user) => {
       ],
     };
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Member
+  |--------------------------------------------------------------------------
+  |
+  | Member can see:
+  | - Himself
+  | - His creator
+  | - Users created by his creator
+  | - SuperAdmin
+  |--------------------------------------------------------------------------
+  */
 
   return {
     $or: [
@@ -88,19 +152,29 @@ const buildVisibilityFilter = (user) => {
   };
 };
 
+/*
+|--------------------------------------------------------------------------
+| LIST USERS
+|--------------------------------------------------------------------------
+*/
+
 const listUsers = asyncHandler(async (req, res) => {
-  const users = await User.find(buildVisibilityFilter(req.user)).sort({
+  const users = await User.find(
+    buildVisibilityFilter(req.user)
+  ).sort({
     role: 1,
     createdAt: -1,
   });
 
-  return res.json(users.map((user) => user.toSafeObject()));
+  return res.json(
+    users.map((user) => user.toSafeObject())
+  );
 });
 
 /*
-=========================================================
-GET SINGLE USER
-=========================================================
+|--------------------------------------------------------------------------
+| GET SINGLE USER
+|--------------------------------------------------------------------------
 */
 
 const getUser = asyncHandler(async (req, res) => {
@@ -110,43 +184,22 @@ const getUser = asyncHandler(async (req, res) => {
   });
 
   if (!user) {
-    return res.status(404).json({ message: "User not found." });
+    return res.status(404).json({
+      message: "User not found.",
+    });
   }
 
   return res.json(user.toSafeObject());
 });
 
 /*
-=========================================================
-UPDATE USER
-=========================================================
+|--------------------------------------------------------------------------
+| UPDATE USER
+|--------------------------------------------------------------------------
 */
 
 const updateUser = asyncHandler(async (req, res) => {
   const { name, username } = req.body;
-
-  const query = isSuperAdmin(req.user.role)
-    ? { _id: req.params.id }
-    : {
-        _id: req.params.id,
-        $or: [{ _id: req.user._id }, { createdBy: req.user._id }],
-      };
-
-  const user = await User.findOne(query);
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found." });
-  }
-
-  if (
-    !isSuperAdmin(req.user.role) &&
-    user.role !== "member" &&
-    user._id.toString() !== req.user._id.toString()
-  ) {
-    return res.status(403).json({
-      message: "Cannot edit this account.",
-    });
-  }
 
   if (!name?.trim() || !username?.trim()) {
     return res.status(400).json({
@@ -154,12 +207,71 @@ const updateUser = asyncHandler(async (req, res) => {
     });
   }
 
-  const normalizedUsername = username.trim().toLowerCase();
+  const currentUserRole = normalizeRole(req.user.role);
+
+  /*
+  |--------------------------------------------------------------------------
+  | SuperAdmin can update anyone
+  |--------------------------------------------------------------------------
+  */
+
+  const query =
+    currentUserRole === "superadmin"
+      ? {
+          _id: req.params.id,
+        }
+      : {
+          _id: req.params.id,
+          $or: [
+            {
+              _id: req.user._id,
+            },
+            {
+              createdBy: req.user._id,
+            },
+          ],
+        };
+
+  const user = await User.findOne(query);
+
+  if (!user) {
+    return res.status(404).json({
+      message: "User not found.",
+    });
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Owner/Member restrictions
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    currentUserRole !== "superadmin" &&
+    normalizeRole(user.role) !== "member" &&
+    user._id.toString() !== req.user._id.toString()
+  ) {
+    return res.status(403).json({
+      message: "Cannot edit this account.",
+    });
+  }
+
+  const normalizedUsername = username
+    .trim()
+    .toLowerCase();
+
+  /*
+  |--------------------------------------------------------------------------
+  | Username uniqueness
+  |--------------------------------------------------------------------------
+  */
 
   if (normalizedUsername !== user.username) {
     const existing = await User.findOne({
       username: normalizedUsername,
-      _id: { $ne: user._id },
+      _id: {
+        $ne: user._id,
+      },
     });
 
     if (existing) {
@@ -178,40 +290,60 @@ const updateUser = asyncHandler(async (req, res) => {
 });
 
 /*
-=========================================================
-NEW: UPDATE MY OWN AVATAR
-=========================================================
-
-Self-service — any logged-in user (member, owner, superadmin) can set
-their own profile photo. No role restriction, unlike the management
-endpoints above; this only ever touches req.user's own document.
+|--------------------------------------------------------------------------
+| UPDATE MY AVATAR
+|--------------------------------------------------------------------------
+|
+| Any logged-in user can update their own avatar.
+|
 */
 
 const updateMyAvatar = asyncHandler(async (req, res) => {
   if (!req.uploadedAvatar) {
-    return res.status(400).json({ message: "No photo uploaded" });
+    return res.status(400).json({
+      message: "No photo uploaded.",
+    });
   }
 
   const user = await User.findById(req.user._id);
 
   if (!user) {
-    return res.status(404).json({ message: "User not found." });
+    return res.status(404).json({
+      message: "User not found.",
+    });
   }
 
-  // Clean up the old photo on Cloudinary so replacing an avatar
-  // doesn't silently pile up orphaned files.
+  /*
+  |--------------------------------------------------------------------------
+  | Delete old avatar from Cloudinary
+  |--------------------------------------------------------------------------
+  */
+
   if (user.avatarPublicId) {
     try {
-      const cloudinary = require("../utils/cloudinary");
-      const client = cloudinary.v2 || cloudinary;
-      await client.uploader.destroy(user.avatarPublicId, { resource_type: "image" });
-    } catch (err) {
-      console.error("Old avatar cleanup failed:", err?.message);
+      await cloudinary.uploader.destroy(
+        user.avatarPublicId,
+        {
+          resource_type: "image",
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Old avatar cleanup failed:",
+        error?.message
+      );
     }
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | Save new avatar
+  |--------------------------------------------------------------------------
+  */
+
   user.avatarUrl = req.uploadedAvatar.url;
-  user.avatarPublicId = req.uploadedAvatar.publicId;
+  user.avatarPublicId =
+    req.uploadedAvatar.publicId;
 
   await user.save();
 
@@ -219,27 +351,47 @@ const updateMyAvatar = asyncHandler(async (req, res) => {
 });
 
 /*
-=========================================================
-NEW: REMOVE MY OWN AVATAR
-=========================================================
+|--------------------------------------------------------------------------
+| REMOVE MY AVATAR
+|--------------------------------------------------------------------------
 */
 
 const removeMyAvatar = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id);
 
   if (!user) {
-    return res.status(404).json({ message: "User not found." });
+    return res.status(404).json({
+      message: "User not found.",
+    });
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Delete from Cloudinary
+  |--------------------------------------------------------------------------
+  */
 
   if (user.avatarPublicId) {
     try {
-      const cloudinary = require("../utils/cloudinary");
-      const client = cloudinary.v2 || cloudinary;
-      await client.uploader.destroy(user.avatarPublicId, { resource_type: "image" });
-    } catch (err) {
-      console.error("Avatar cleanup failed:", err?.message);
+      await cloudinary.uploader.destroy(
+        user.avatarPublicId,
+        {
+          resource_type: "image",
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Avatar cleanup failed:",
+        error?.message
+      );
     }
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Remove avatar from database
+  |--------------------------------------------------------------------------
+  */
 
   user.avatarUrl = "";
   user.avatarPublicId = "";
@@ -250,31 +402,60 @@ const removeMyAvatar = asyncHandler(async (req, res) => {
 });
 
 /*
-=========================================================
-TOGGLE USER ACTIVE
-=========================================================
+|--------------------------------------------------------------------------
+| TOGGLE USER ACTIVE
+|--------------------------------------------------------------------------
 */
 
 const toggleUserActive = asyncHandler(async (req, res) => {
-  const query = isSuperAdmin(req.user.role)
-    ? { _id: req.params.id }
-    : { _id: req.params.id, createdBy: req.user._id };
+  const currentUserRole = normalizeRole(
+    req.user.role
+  );
+
+  const query =
+    currentUserRole === "superadmin"
+      ? {
+          _id: req.params.id,
+        }
+      : {
+          _id: req.params.id,
+          createdBy: req.user._id,
+        };
 
   const user = await User.findOne(query);
 
   if (!user) {
-    return res.status(404).json({ message: "User not found." });
-  }
-
-  if (isSuperAdmin(user.role)) {
-    return res.status(400).json({
-      message: "Cannot deactivate a superadmin account.",
+    return res.status(404).json({
+      message: "User not found.",
     });
   }
 
-  if (user._id.toString() === req.user._id.toString()) {
+  /*
+  |--------------------------------------------------------------------------
+  | SuperAdmin cannot be deactivated
+  |--------------------------------------------------------------------------
+  */
+
+  if (isSuperAdmin(user.role)) {
     return res.status(400).json({
-      message: "You cannot deactivate your own account.",
+      message:
+        "Cannot deactivate a superadmin account.",
+    });
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Cannot deactivate yourself
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    user._id.toString() ===
+    req.user._id.toString()
+  ) {
+    return res.status(400).json({
+      message:
+        "You cannot deactivate your own account.",
     });
   }
 
@@ -286,9 +467,9 @@ const toggleUserActive = asyncHandler(async (req, res) => {
 });
 
 /*
-=========================================================
-RESET PASSWORD
-=========================================================
+|--------------------------------------------------------------------------
+| RESET PASSWORD
+|--------------------------------------------------------------------------
 */
 
 const resetPassword = asyncHandler(async (req, res) => {
@@ -300,19 +481,41 @@ const resetPassword = asyncHandler(async (req, res) => {
     });
   }
 
-  const query = isSuperAdmin(req.user.role)
-    ? { _id: req.params.id }
-    : { _id: req.params.id, createdBy: req.user._id };
+  const currentUserRole = normalizeRole(
+    req.user.role
+  );
+
+  const query =
+    currentUserRole === "superadmin"
+      ? {
+          _id: req.params.id,
+        }
+      : {
+          _id: req.params.id,
+          createdBy: req.user._id,
+        };
 
   const user = await User.findOne(query);
 
   if (!user) {
-    return res.status(404).json({ message: "User not found." });
+    return res.status(404).json({
+      message: "User not found.",
+    });
   }
 
-  if (isSuperAdmin(user.role) && !isSuperAdmin(req.user.role)) {
+  /*
+  |--------------------------------------------------------------------------
+  | Only SuperAdmin can reset SuperAdmin password
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    isSuperAdmin(user.role) &&
+    !isSuperAdmin(req.user.role)
+  ) {
     return res.status(403).json({
-      message: "Cannot reset a superadmin's password.",
+      message:
+        "Cannot reset a superadmin's password.",
     });
   }
 
@@ -324,6 +527,12 @@ const resetPassword = asyncHandler(async (req, res) => {
     message: `Password reset for ${user.name}.`,
   });
 });
+
+/*
+|--------------------------------------------------------------------------
+| EXPORTS
+|--------------------------------------------------------------------------
+*/
 
 module.exports = {
   createUser,
