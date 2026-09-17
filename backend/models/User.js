@@ -22,19 +22,12 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // FIX: taskController already checked for "superadmin" but the enum
-    // only allowed owner/member — so a superadmin could never actually
-    // be saved and all those checks were dead code.
     role: {
       type: String,
       enum: ["superadmin", "owner", "member"],
       default: "member",
     },
 
-    /*
-     * For member accounts this stores the owner who created them.
-     * Superadmin accounts have createdBy = null.
-     */
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -44,6 +37,18 @@ const userSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+
+    // NEW: profile photo. Cloudinary URL + public_id so it can be
+    // replaced/removed cleanly (same pattern as chat photo messages).
+    avatarUrl: {
+      type: String,
+      default: "",
+    },
+
+    avatarPublicId: {
+      type: String,
+      default: "",
     },
   },
   { timestamps: true }
@@ -78,6 +83,8 @@ userSchema.methods.toSafeObject = function () {
     isActive: this.isActive,
     createdBy: this.createdBy,
     createdAt: this.createdAt,
+    // NEW
+    avatarUrl: this.avatarUrl || "",
   };
 };
 

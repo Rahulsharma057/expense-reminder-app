@@ -7,40 +7,39 @@ const {
   listUsers,
   getUser,
   updateUser,
+  updateMyAvatar,
+  removeMyAvatar,
   toggleUserActive,
   resetPassword,
 } = require("../controllers/userController");
 
 const { protect, requireOwner } = require("../middleware/auth");
+const { uploadAvatarFile, persistAvatar } = require("../middleware/uploadAvatar");
 
 router.use(protect);
 
 /*
 =========================================================
-USER LIST
+USER LIST — open to all authenticated users, scoped by role
+in the controller.
 =========================================================
-
-CHANGED: this is no longer owner-only.
-
-Anyone can assign a task now, so every logged-in user needs to be
-able to see who they're allowed to assign to. The controller scopes
-the result by role (see buildVisibilityFilter), so a member still
-can't enumerate the whole database — they only see their own org
-plus the superadmin.
 */
 router.get("/", listUsers);
 
 /*
 =========================================================
+NEW: SELF-SERVICE AVATAR
+Must come before "/:id" routes below so "me" is never matched
+as an :id param.
+=========================================================
+*/
+router.patch("/me/avatar", uploadAvatarFile, persistAvatar, updateMyAvatar);
+router.delete("/me/avatar", removeMyAvatar);
+
+/*
+=========================================================
 USER MANAGEMENT — OWNER / SUPERADMIN
 =========================================================
-
-NOTE: requireOwner must allow role === "superadmin" too. If your
-middleware currently checks `req.user.role === "owner"` exactly,
-change it to allow both, e.g.:
-
-  const allowed = ["owner", "superadmin"];
-  if (!allowed.includes(req.user.role)) return res.status(403)...
 */
 
 router.post("/", requireOwner, createUser);

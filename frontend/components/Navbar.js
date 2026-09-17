@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -16,6 +16,7 @@ import {
   Chip,
   Divider,
   Tooltip,
+  CircularProgress,
 } from "@mui/material";
 
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
@@ -26,16 +27,23 @@ import PeopleRoundedIcon from "@mui/icons-material/PeopleRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import ChecklistRtlRoundedIcon from "@mui/icons-material/ChecklistRtlRounded";
+import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
+import PlaylistAddCheckRoundedIcon from "@mui/icons-material/PlaylistAddCheckRounded";
 import HandshakeRoundedIcon from "@mui/icons-material/HandshakeRounded";
 import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
-import PlaylistAddCheckRoundedIcon from "@mui/icons-material/PlaylistAddCheckRounded";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
-import { usePathname, useRouter } from "next/navigation";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
-import { getStoredUser, clearSession } from "../lib/auth";
 
-import NotificationBell from "./Notificationbell";
+import { usePathname, useRouter } from "next/navigation";
+import { toast } from "react-toastify";
+
+import { getStoredUser, clearSession } from "../lib/auth";
+// NEW: task/checklist bell — fully self-contained, see
+// components/NotificationBell.jsx
+import NotificationBell from "./NotificationBell";
+// NEW: profile photo upload
+import { uploadMyAvatar } from "../lib/userApi";
 
 export default function Navbar() {
   const router = useRouter();
@@ -57,9 +65,52 @@ export default function Navbar() {
   }, []);
 
   // =========================================================
+  // NEW: PROFILE PHOTO UPLOAD
+  // =========================================================
+  const avatarInputRef = useRef(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handleAvatarPick = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image");
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error("Image must be under 4MB");
+      return;
+    }
+
+    try {
+      setAvatarUploading(true);
+      const response = await uploadMyAvatar(file);
+
+      // Update both localStorage (so a refresh keeps it) and this
+      // component's state (so it shows immediately without a reload).
+      const updatedUser = { ...user, ...response.data };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      setUser(updatedUser);
+
+      toast.success("Profile photo updated");
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Could not update photo");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // =========================================================
   // NAVIGATION ITEMS
   // =========================================================
-  const NAV_ITEMS = [
+ const NAV_ITEMS = [
     {
       label: "Dashboard",
       href: "/dashboard",
@@ -392,31 +443,55 @@ export default function Navbar() {
               },
             }}
           >
-            <Avatar
-              sx={{
-                width: {
-                  sm: 38,
-                  md: 40,
-                },
+            {/* NEW: clickable avatar — uploads a profile photo. */}
+            <Tooltip title="Change profile photo">
+              <Box
+                onClick={handleAvatarPick}
+                sx={{
+                  position: "relative",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  "&:hover .avatar-camera-badge": { opacity: 1 },
+                }}
+              >
+                <Avatar
+                  src={user?.avatarUrl || undefined}
+                  sx={{
+                    width: { sm: 38, md: 40 },
+                    height: { sm: 38, md: 40 },
+                    bgcolor: "#FFFFFF",
+                    color: "#6D28D9",
+                    fontSize: 14,
+                    fontWeight: 800,
+                  }}
+                >
+                  {userInitial}
+                </Avatar>
 
-                height: {
-                  sm: 38,
-                  md: 40,
-                },
-
-                bgcolor: "#FFFFFF",
-
-                color: "#6D28D9",
-
-                fontSize: 14,
-
-                fontWeight: 800,
-
-                flexShrink: 0,
-              }}
-            >
-              {userInitial}
-            </Avatar>
+                {avatarUploading ? (
+                  <Box
+                    sx={{
+                      position: "absolute", inset: 0, borderRadius: "50%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      bgcolor: "rgba(0,0,0,0.45)",
+                    }}
+                  >
+                    <CircularProgress size={16} sx={{ color: "#fff" }} />
+                  </Box>
+                ) : (
+                  <Box
+                    className="avatar-camera-badge"
+                    sx={{
+                      position: "absolute", inset: 0, borderRadius: "50%",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      bgcolor: "rgba(0,0,0,0.45)", opacity: 0, transition: "opacity 0.15s",
+                    }}
+                  >
+                    <PhotoCameraRoundedIcon sx={{ fontSize: 16, color: "#fff" }} />
+                  </Box>
+                )}
+              </Box>
+            </Tooltip>
 
             <Box
               sx={{
@@ -606,35 +681,41 @@ export default function Navbar() {
                 minWidth: 0,
               }}
             >
-              {/* Avatar */}
-              <Avatar
-                sx={{
-                  width: {
-                    xs: 44,
-                    sm: 46,
-                  },
+              {/* Avatar — clickable, same upload handler as the desktop one. */}
+              <Tooltip title="Change profile photo">
+                <Box
+                  onClick={handleAvatarPick}
+                  sx={{ position: "relative", cursor: "pointer", flexShrink: 0, "&:hover .avatar-camera-badge-2": { opacity: 1 } }}
+                >
+                  <Avatar
+                    src={user?.avatarUrl || undefined}
+                    sx={{
+                      width: { xs: 44, sm: 46 },
+                      height: { xs: 44, sm: 46 },
+                      bgcolor: "#7C3AED",
+                      color: "#FFFFFF",
+                      fontSize: 17,
+                      fontWeight: 800,
+                      boxShadow: "0 6px 16px rgba(124,58,237,0.25)",
+                    }}
+                  >
+                    {userInitial}
+                  </Avatar>
 
-                  height: {
-                    xs: 44,
-                    sm: 46,
-                  },
-
-                  flexShrink: 0,
-
-                  bgcolor: "#7C3AED",
-
-                  color: "#FFFFFF",
-
-                  fontSize: 17,
-
-                  fontWeight: 800,
-
-                  boxShadow:
-                    "0 6px 16px rgba(124,58,237,0.25)",
-                }}
-              >
-                {userInitial}
-              </Avatar>
+                  {avatarUploading ? (
+                    <Box sx={{ position: "absolute", inset: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "rgba(0,0,0,0.45)" }}>
+                      <CircularProgress size={17} sx={{ color: "#fff" }} />
+                    </Box>
+                  ) : (
+                    <Box
+                      className="avatar-camera-badge-2"
+                      sx={{ position: "absolute", inset: 0, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "rgba(0,0,0,0.45)", opacity: 0, transition: "opacity 0.15s" }}
+                    >
+                      <PhotoCameraRoundedIcon sx={{ fontSize: 17, color: "#fff" }} />
+                    </Box>
+                  )}
+                </Box>
+              </Tooltip>
 
               {/* User information */}
               <Box
@@ -1018,6 +1099,15 @@ export default function Navbar() {
           </Box>
         </Box>
       </Drawer>
+
+      {/* Shared hidden input for both avatar-click targets above. */}
+      <input
+        type="file"
+        accept="image/*"
+        hidden
+        ref={avatarInputRef}
+        onChange={handleAvatarChange}
+      />
     </>
   );
 }

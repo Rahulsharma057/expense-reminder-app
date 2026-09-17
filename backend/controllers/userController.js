@@ -10,9 +10,6 @@ const isOwner = (role) => String(role || "").toLowerCase() === "owner";
 =========================================================
 CREATE USER
 =========================================================
-
-- superadmin can create owners and members
-- owner can create members only
 */
 
 const createUser = asyncHandler(async (req, res) => {
@@ -33,8 +30,6 @@ const createUser = asyncHandler(async (req, res) => {
   let newRole = "member";
 
   if (isSuperAdmin(req.user.role)) {
-    // Superadmin may hand out owner accounts. Creating another
-    // superadmin is deliberately not allowed through the API.
     if (role === "owner" || role === "member") {
       newRole = role;
     }
@@ -66,19 +61,6 @@ const createUser = asyncHandler(async (req, res) => {
 =========================================================
 LIST USERS
 =========================================================
-
-Everyone can call this now, because anyone can assign a task.
-What comes back is scoped by role:
-
-- superadmin  : every user
-- owner       : self + members they created + superadmin
-- member      : self + their owner + fellow members under that
-                owner + superadmin
-
-The superadmin is always included, which is what makes
-"anyone can message the superadmin" work — a member just
-creates an INDIVIDUAL task assigned to them, and that task's
-chat becomes the conversation.
 */
 
 const buildVisibilityFilter = (user) => {
@@ -96,7 +78,6 @@ const buildVisibilityFilter = (user) => {
     };
   }
 
-  // member
   return {
     $or: [
       { _id: user._id },
@@ -139,9 +120,6 @@ const getUser = asyncHandler(async (req, res) => {
 =========================================================
 UPDATE USER
 =========================================================
-
-- superadmin can edit anyone
-- owner can edit their own account + members they created
 */
 
 const updateUser = asyncHandler(async (req, res) => {
@@ -160,7 +138,6 @@ const updateUser = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: "User not found." });
   }
 
-  // An owner can only edit their OWN owner account, not another owner's.
   if (
     !isSuperAdmin(req.user.role) &&
     user.role !== "member" &&
@@ -194,6 +171,78 @@ const updateUser = asyncHandler(async (req, res) => {
 
   user.name = name.trim();
   user.username = normalizedUsername;
+
+  await user.save();
+
+  return res.json(user.toSafeObject());
+});
+
+/*
+=========================================================
+NEW: UPDATE MY OWN AVATAR
+=========================================================
+
+Self-service — any logged-in user (member, owner, superadmin) can set
+their own profile photo. No role restriction, unlike the management
+endpoints above; this only ever touches req.user's own document.
+*/
+
+const updateMyAvatar = asyncHandler(async (req, res) => {
+  if (!req.uploadedAvatar) {
+    return res.status(400).json({ message: "No photo uploaded" });
+  }
+
+  const user = await User.findById(req.user._id);
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found." });
+  }
+
+  // Clean up the old photo on Cloudinary so replacing an avatar
+  // doesn't silently pile up orphaned files.
+  if (user.avatarPublicId) {
+    try {
+      const cloudinary = require("../utils/cloudinary");
+      const client = cloudinary.v2 || cloudinary;
+      await client.uploader.destroy(user.avatarPublicId, { resource_type: "image" });
+    } catch (err) {
+      console.error("Old avatar cleanup failed:", err?.message);
+    }
+  }
+
+  user.avatarUrl = req.uploadedAvatar.url;
+  user.avatarPublicId = req.uploadedAvatar.publicId;
+
+  await user.save();
+
+  return res.json(user.toSafeObject());
+});
+
+/*
+=========================================================
+NEW: REMOVE MY OWN AVATAR
+=========================================================
+*/
+
+const removeMyAvatar = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found." });
+  }
+
+  if (user.avatarPublicId) {
+    try {
+      const cloudinary = require("../utils/cloudinary");
+      const client = cloudinary.v2 || cloudinary;
+      await client.uploader.destroy(user.avatarPublicId, { resource_type: "image" });
+    } catch (err) {
+      console.error("Avatar cleanup failed:", err?.message);
+    }
+  }
+
+  user.avatarUrl = "";
+  user.avatarPublicId = "";
 
   await user.save();
 
@@ -269,7 +318,6 @@ const resetPassword = asyncHandler(async (req, res) => {
 
   user.password = password;
 
-  // The User model pre-save hook hashes it.
   await user.save();
 
   return res.json({
@@ -282,6 +330,8 @@ module.exports = {
   listUsers,
   getUser,
   updateUser,
+  updateMyAvatar,
+  removeMyAvatar,
   toggleUserActive,
   resetPassword,
 };

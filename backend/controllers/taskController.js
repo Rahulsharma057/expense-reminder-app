@@ -153,9 +153,9 @@ const spawnNextRecurrence = async (completedTask) => {
   });
 
   const populatedNext = await nextTask.populate([
-    { path: "assignedTo", select: "name email role" },
-    { path: "participants", select: "name email role" },
-    { path: "assignedBy", select: "name email role" },
+    { path: "assignedTo", select: "name email role avatarUrl" },
+    { path: "participants", select: "name email role avatarUrl" },
+    { path: "assignedBy", select: "name email role avatarUrl" },
   ]);
 
   await notifyUsers({
@@ -304,8 +304,8 @@ const createTask = async (req, res) => {
       const task = await Task.create({ ...base, mode: "INDIVIDUAL", assignedTo, participants: [] });
 
       const populated = await task.populate([
-        { path: "assignedTo", select: "name email role" },
-        { path: "assignedBy", select: "name email role" },
+        { path: "assignedTo", select: "name email role avatarUrl" },
+        { path: "assignedBy", select: "name email role avatarUrl" },
       ]);
 
       await createNotification({
@@ -351,8 +351,8 @@ const createTask = async (req, res) => {
       );
 
       const populatedTasks = await Task.find({ _id: { $in: createdTasks.map((t) => t._id) } })
-        .populate("assignedTo", "name email role")
-        .populate("assignedBy", "name email role")
+        .populate("assignedTo", "name email role avatarUrl")
+        .populate("assignedBy", "name email role avatarUrl")
         .sort({ createdAt: -1 });
 
       populatedTasks.forEach((task) => emitToUser(task.assignedTo?._id || task.assignedTo, "newTask", task));
@@ -376,8 +376,8 @@ const createTask = async (req, res) => {
     const task = await Task.create({ ...base, mode: "GROUP", assignedTo: null, participants });
 
     const populated = await task.populate([
-      { path: "participants", select: "name email role" },
-      { path: "assignedBy", select: "name email role" },
+      { path: "participants", select: "name email role avatarUrl" },
+      { path: "assignedBy", select: "name email role avatarUrl" },
     ]);
 
     await notifyUsers({
@@ -421,9 +421,9 @@ const getMyTasks = async (req, res) => {
     const [total, tasks] = await Promise.all([
       Task.countDocuments(filter),
       Task.find(filter)
-        .populate("assignedBy", "name username email role isActive")
-        .populate("assignedTo", "name username email role isActive")
-        .populate("participants", "name username email role isActive")
+        .populate("assignedBy", "name username email role isActive avatarUrl")
+        .populate("assignedTo", "name username email role isActive avatarUrl")
+        .populate("participants", "name username email role isActive avatarUrl")
         .sort({ lastMessageAt: -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -431,9 +431,34 @@ const getMyTasks = async (req, res) => {
     ]);
 
     const me = String(userId);
+
+    // NEW: real unread counts (WhatsApp-style badge number), computed
+    // in one aggregation instead of N queries — "unread" = a message
+    // in this task that isn't mine and I haven't seen yet.
+    const taskIds = tasks.map((task) => task._id);
+
+    const unreadRows = taskIds.length
+      ? await Message.aggregate([
+          {
+            $match: {
+              task: { $in: taskIds },
+              sender: { $ne: userId },
+              seenBy: { $ne: userId },
+              deletedForEveryone: { $ne: true },
+            },
+          },
+          { $group: { _id: "$task", count: { $sum: 1 } } },
+        ])
+      : [];
+
+    const unreadByTask = new Map(
+      unreadRows.map((row) => [String(row._id), row.count])
+    );
+
     const withPinned = tasks.map((task) => ({
       ...task,
       pinned: (task.pinnedBy || []).some((id) => String(id) === me),
+      unreadCount: unreadByTask.get(String(task._id)) || 0,
     }));
     withPinned.sort((a, b) => Number(b.pinned) - Number(a.pinned));
 
@@ -466,9 +491,9 @@ const getAllTasks = async (req, res) => {
     const [total, tasks] = await Promise.all([
       Task.countDocuments(),
       Task.find()
-        .populate("assignedTo", "name email role")
-        .populate("participants", "name email role")
-        .populate("assignedBy", "name email role")
+        .populate("assignedTo", "name email role avatarUrl")
+        .populate("participants", "name email role avatarUrl")
+        .populate("assignedBy", "name email role avatarUrl")
         .sort({ lastMessageAt: -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -496,11 +521,11 @@ const getTaskById = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
 
     const task = await Task.findById(id)
-      .populate("assignedTo", "name email role")
-      .populate("participants", "name email role")
-      .populate("assignedBy", "name email role")
-      .populate("checklist.doneBy", "name role")
-      .populate("checklist.assignedTo", "name role")
+      .populate("assignedTo", "name email role avatarUrl")
+      .populate("participants", "name email role avatarUrl")
+      .populate("assignedBy", "name email role avatarUrl")
+      .populate("checklist.doneBy", "name role avatarUrl")
+      .populate("checklist.assignedTo", "name role avatarUrl")
       .lean();
 
     if (!task) return res.status(404).json({ message: "Task not found" });
@@ -549,9 +574,9 @@ const updateStatus = async (req, res) => {
     await task.save();
 
     const updated = await Task.findById(id)
-      .populate("assignedTo", "name email role")
-      .populate("participants", "name email role")
-      .populate("assignedBy", "name email role");
+      .populate("assignedTo", "name email role avatarUrl")
+      .populate("participants", "name email role avatarUrl")
+      .populate("assignedBy", "name email role avatarUrl");
 
     const recipients = isTaskAssigner(task, req.user._id) ? getTaskParticipants(task) : getChatMembers(task);
 
@@ -617,9 +642,9 @@ const updateTask = async (req, res) => {
     await task.save();
 
     const updated = await Task.findById(id)
-      .populate("assignedTo", "name email role")
-      .populate("participants", "name email role")
-      .populate("assignedBy", "name email role");
+      .populate("assignedTo", "name email role avatarUrl")
+      .populate("participants", "name email role avatarUrl")
+      .populate("assignedBy", "name email role avatarUrl");
 
     emitToTask(id, "taskUpdated", { taskId: id, task: updated });
 
@@ -663,8 +688,8 @@ const reassignTask = async (req, res) => {
     await task.save();
 
     const updated = await Task.findById(id)
-      .populate("assignedTo", "name email role")
-      .populate("assignedBy", "name email role");
+      .populate("assignedTo", "name email role avatarUrl")
+      .populate("assignedBy", "name email role avatarUrl");
 
     await notifyUsers({
       recipients: [newAssigneeId],
@@ -916,52 +941,122 @@ const togglePin = async (req, res) => {
 // the task document and won't be deleted automatically.
 // ==========================================================
 
+// ==========================================================
+// DELETE TASK — also cleans up its Message collection rows and
+// their Cloudinary assets, since messages no longer live inside
+// the task document and won't be deleted automatically.
+// ==========================================================
+
 const deleteTask = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
 
-    const task = await Task.findById(id).select("_id title assignedTo assignedBy participants mode");
-    if (!task) return res.status(404).json({ message: "Task not found" });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: "Invalid task ID",
+      });
+    }
+
+    const task = await Task.findById(id).select(
+      "_id title assignedTo assignedBy participants mode"
+    );
+
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found",
+      });
+    }
 
     const isCreator = isTaskAssigner(task, req.user?._id);
     const isAdmin = isSuperAdmin(req.user?.role);
 
     if (!isCreator && !isAdmin) {
-      return res.status(403).json({ message: "Only the task creator or superadmin can delete this task" });
+      return res.status(403).json({
+        message: "Only the task creator or superadmin can delete this task",
+      });
     }
 
     const members = getChatMembers(task);
 
-    // Best-effort Cloudinary cleanup for any files attached to this
-    // task's chat. Failures here don't block the task delete.
+    // ======================================================
+    // CLOUDINARY CLEANUP
+    // ======================================================
+
     try {
-      const filesToClean = await Message.find({ task: id, filePublicId: { $ne: "" } })
+      const filesToClean = await Message.find({
+        task: id,
+        filePublicId: {
+          $exists: true,
+          $nin: ["", null],
+        },
+      })
         .select("filePublicId type")
         .lean();
 
       if (filesToClean.length) {
-const { cloudinary } = require("../config/cloudinary");
-        const client = cloudinary.v2 || cloudinary;
+        const { cloudinary: client } = require("../config/cloudinary");
+
         await Promise.all(
-          filesToClean.map((m) => {
-            const resourceType = m.type === "document" ? "raw" : m.type === "voice" ? "video" : "image";
-            return client.uploader.destroy(m.filePublicId, { resource_type: resourceType }).catch(() => {});
+          filesToClean.map(async (file) => {
+            try {
+              const resourceType =
+                file.type === "document"
+                  ? "raw"
+                  : file.type === "voice"
+                    ? "video"
+                    : "image";
+
+              await client.uploader.destroy(file.filePublicId, {
+                resource_type: resourceType,
+              });
+            } catch (cloudinaryError) {
+              console.error(
+                `Cloudinary cleanup failed for ${file.filePublicId}:`,
+                cloudinaryError?.message
+              );
+            }
           })
         );
       }
     } catch (cleanupErr) {
-      console.error("deleteTask cloudinary cleanup failed:", cleanupErr?.message);
+      console.error(
+        "deleteTask cloudinary cleanup failed:",
+        cleanupErr?.message
+      );
     }
 
-    await Promise.all([Task.findByIdAndDelete(id), Message.deleteMany({ task: id })]);
+    // ======================================================
+    // DELETE TASK + CHAT MESSAGES
+    // ======================================================
 
-    emitToUsers(members, "taskDeleted", { taskId: String(task._id) });
+    await Promise.all([
+      Task.findByIdAndDelete(id),
+      Message.deleteMany({
+        task: id,
+      }),
+    ]);
 
-    return res.json({ success: true, message: "Task deleted successfully", data: { _id: task._id } });
+    // ======================================================
+    // REALTIME UPDATE
+    // ======================================================
+
+    emitToUsers(members, "taskDeleted", {
+      taskId: String(task._id),
+    });
+
+    return res.json({
+      success: true,
+      message: "Task deleted successfully",
+      data: {
+        _id: task._id,
+      },
+    });
   } catch (err) {
     console.error("deleteTask error:", err);
-    return res.status(500).json({ message: "Could not delete task" });
+
+    return res.status(500).json({
+      message: "Could not delete task",
+    });
   }
 };
 

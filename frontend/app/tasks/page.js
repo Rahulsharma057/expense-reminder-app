@@ -91,6 +91,14 @@ const getUserName = (user) => {
 const getInitial = (user) =>
   getUserName(user).trim().charAt(0).toUpperCase() || "U";
 
+// NEW: profile photo, if the user has one — MUI's Avatar falls back
+// to its children (the initial letter) automatically if src is falsy
+// or the image fails to load, so this is safe to pass through as-is.
+const getUserAvatar = (user) => {
+  if (!user || typeof user === "string") return undefined;
+  return user.avatarUrl || undefined;
+};
+
 const colorFor = (id) => {
   const str = String(id || "");
   let hash = 0;
@@ -139,6 +147,14 @@ const getErrorMessage = (error, fallback) =>
   task, the person you're talking to is whoever ISN'T you — the
   assignee if you created it, the creator if it was assigned to you.
 */
+// NEW: like getChatTitle, but returns the user object (not just the
+// name string) so the avatar photo can be read off it.
+const getChatPartnerUser = (task, myId) => {
+  if (!task || task.mode === "GROUP") return null;
+  if (sameId(task.assignedBy, myId)) return task.assignedTo;
+  return task.assignedBy;
+};
+
 const getChatTitle = (task, myId) => {
   if (!task) return "";
 
@@ -456,6 +472,13 @@ function TasksInner() {
   const [chatDarkMode, setChatDarkMode] = useState(false);
   const [chatSettingsAnchor, setChatSettingsAnchor] = useState(null);
 
+  // NEW: custom wallpaper picked from the phone's gallery. Stored as a
+  // resized data URL in localStorage (device-level, same place as the
+  // preset choice) rather than uploaded anywhere — it's a personal
+  // display preference, not shared with anyone else in the chat.
+  const [customWallpaperUrl, setCustomWallpaperUrl] = useState("");
+  const wallpaperFileInputRef = useRef(null);
+
   /* ---------------- create task ---------------- */
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -515,7 +538,16 @@ function TasksInner() {
     try {
       const savedWallpaper = window.localStorage.getItem("chatWallpaper");
       const savedDark = window.localStorage.getItem("chatDark");
-      if (savedWallpaper && WALLPAPERS[savedWallpaper]) setWallpaper(savedWallpaper);
+      const savedCustom = window.localStorage.getItem("chatWallpaperCustom");
+
+      if (savedCustom) setCustomWallpaperUrl(savedCustom);
+
+      if (savedWallpaper === "custom" && savedCustom) {
+        setWallpaper("custom");
+      } else if (savedWallpaper && WALLPAPERS[savedWallpaper]) {
+        setWallpaper(savedWallpaper);
+      }
+
       if (savedDark) setChatDarkMode(savedDark === "1");
     } catch {
       // localStorage can throw in some private-browsing modes — fine
@@ -530,6 +562,76 @@ function TasksInner() {
     } catch {}
     setChatSettingsAnchor(null);
   };
+
+  // NEW: gallery wallpaper — reads the picked file, downsizes it on a
+  // canvas (full-resolution phone photos are overkill for a repeating
+  // chat background and would blow past localStorage's ~5MB quota),
+  // then stores the result as a JPEG data URL.
+  const pickCustomWallpaper = () => {
+    wallpaperFileInputRef.current?.click();
+  };
+
+  const handleCustomWallpaperFile = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image");
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const img = new Image();
+
+      img.onload = () => {
+        const maxDimension = 1080;
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+
+        try {
+          window.localStorage.setItem("chatWallpaperCustom", dataUrl);
+          window.localStorage.setItem("chatWallpaper", "custom");
+          setCustomWallpaperUrl(dataUrl);
+          setWallpaper("custom");
+          setChatSettingsAnchor(null);
+          toast.success("Wallpaper updated");
+        } catch {
+          toast.error("That image is too large to save as a wallpaper — try a smaller one");
+        }
+      };
+
+      img.onerror = () => toast.error("Could not read that image");
+      img.src = reader.result;
+    };
+
+    reader.onerror = () => toast.error("Could not read that file");
+    reader.readAsDataURL(file);
+  };
+
+  const removeCustomWallpaper = () => {
+    try {
+      window.localStorage.removeItem("chatWallpaperCustom");
+    } catch {}
+    setCustomWallpaperUrl("");
+    if (wallpaper === "custom") pickWallpaper("default");
+  };
+
+  // Resolves whatever's currently selected (preset gradient or the
+  // custom photo) into a CSS `background` value for the chat area.
+  const currentChatBackground =
+    wallpaper === "custom" && customWallpaperUrl
+      ? `center / cover no-repeat url(${customWallpaperUrl})`
+      : WALLPAPERS[wallpaper]?.bg || WALLPAPERS.default.bg;
 
   const toggleChatDarkMode = () => {
     setChatDarkMode((previous) => {
@@ -617,7 +719,7 @@ function TasksInner() {
 
       setTasks((previous) =>
         previous.map((item) =>
-          item._id === task._id ? { ...item, unread: false } : item
+          item._id === task._id ? { ...item, unread: false, unreadCount: 0 } : item
         )
       );
 
@@ -691,16 +793,22 @@ function TasksInner() {
     const onNotification = (payload) => {
       if (payload?.type !== "NEW_MESSAGE" || !payload?.task) return;
       setTasks((previous) =>
-        previous.map((task) =>
-          sameId(task._id, payload.task)
-            ? {
-                ...task,
-                lastMessageText: payload.message || task.lastMessageText,
-                lastMessageAt: payload.createdAt || new Date().toISOString(),
-                unread: selectedIdRef.current !== task._id,
-              }
-            : task
-        )
+        previous.map((task) => {
+          if (!sameId(task._id, payload.task)) return task;
+
+          // The chat this message belongs to is open right now — it'll
+          // get marked seen by the task-room socket handler already,
+          // so don't bump the badge for it.
+          const isOpen = selectedIdRef.current === task._id;
+
+          return {
+            ...task,
+            lastMessageText: payload.message || task.lastMessageText,
+            lastMessageAt: payload.createdAt || new Date().toISOString(),
+            unread: !isOpen,
+            unreadCount: isOpen ? 0 : (task.unreadCount || 0) + 1,
+          };
+        })
       );
     };
 
@@ -1575,10 +1683,14 @@ function TasksInner() {
               >
                 {filteredTasks.map((task) => {
                   const isSelected = selectedTask?._id === task._id;
+                  const partnerUser = getChatPartnerUser(task, myId);
                   const partner = getChatTitle(task, myId);
                   const doneCount = (task.checklist || []).filter((i) => i.done).length;
                   const totalCount = (task.checklist || []).length;
                   const pMeta = priorityMeta(task.priority);
+                  // Backend sends a real number now; fall back to the
+                  // old boolean flag for a moment during rollout.
+                  const unreadCount = task.unreadCount ?? (task.unread ? 1 : 0);
 
                   return (
                     <Box
@@ -1593,11 +1705,13 @@ function TasksInner() {
                       <Stack direction="row" spacing={1.2} alignItems="flex-start">
                         <Badge
                           color="secondary"
-                          variant="dot"
-                          invisible={!task.unread}
-                          sx={{ "& .MuiBadge-dot": { bgcolor: PURPLE } }}
+                          badgeContent={unreadCount}
+                          max={99}
+                          invisible={!unreadCount}
+                          sx={{ "& .MuiBadge-badge": { bgcolor: PURPLE, color: "#fff", fontWeight: 700, fontSize: 10 } }}
                         >
                           <Avatar
+                            src={task.mode === "GROUP" ? undefined : getUserAvatar(partnerUser)}
                             sx={{
                               width: 42, height: 42, borderRadius: 2.2,
                               bgcolor: task.mode === "GROUP" ? "#EEE7FF" : colorFor(getId(task.assignedTo) || task._id),
@@ -1737,13 +1851,14 @@ function TasksInner() {
                   {selectedTask.mode === "GROUP" ? (
                     <AvatarGroup max={3} sx={{ "& .MuiAvatar-root": { width: 34, height: 34, fontSize: 13, fontWeight: 700 } }}>
                       {(selectedTask.participants || []).map((person) => (
-                        <Avatar key={person._id} sx={{ bgcolor: colorFor(person._id) }}>
+                        <Avatar key={person._id} src={getUserAvatar(person)} sx={{ bgcolor: colorFor(person._id) }}>
                           {getInitial(person)}
                         </Avatar>
                       ))}
                     </AvatarGroup>
                   ) : (
                     <Avatar
+                      src={getUserAvatar(getChatPartnerUser(selectedTask, myId))}
                       sx={{
                         width: 40, height: 40, borderRadius: 2.2, fontWeight: 800,
                         bgcolor: colorFor(getId(selectedTask.assignedTo) || selectedTask._id),
@@ -1862,7 +1977,48 @@ function TasksInner() {
                     {w.label}
                   </MenuItem>
                 ))}
+
+                {/* NEW: custom wallpaper from the gallery. */}
+                {customWallpaperUrl && (
+                  <MenuItem
+                    selected={wallpaper === "custom"}
+                    onClick={() => {
+                      setWallpaper("custom");
+                      try { window.localStorage.setItem("chatWallpaper", "custom"); } catch {}
+                      setChatSettingsAnchor(null);
+                    }}
+                    sx={{ fontSize: 13 }}
+                  >
+                    <Box
+                      component="img"
+                      src={customWallpaperUrl}
+                      sx={{ width: 18, height: 18, borderRadius: 1, mr: 1.2, border: "1px solid #ddd", flexShrink: 0, objectFit: "cover" }}
+                    />
+                    My photo
+                  </MenuItem>
+                )}
+
+                <MenuItem onClick={pickCustomWallpaper} sx={{ fontSize: 13, color: PURPLE_DARK, fontWeight: 700 }}>
+                  <ImageIcon sx={{ fontSize: 16, mr: 1.2 }} />
+                  {customWallpaperUrl ? "Choose a different photo" : "Choose from gallery"}
+                </MenuItem>
+
+                {customWallpaperUrl && (
+                  <MenuItem onClick={removeCustomWallpaper} sx={{ fontSize: 13, color: "#B42318" }}>
+                    <Close sx={{ fontSize: 16, mr: 1.2 }} />
+                    Remove my photo wallpaper
+                  </MenuItem>
+                )}
               </Menu>
+
+              {/* Hidden input for the gallery wallpaper picker above. */}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                ref={wallpaperFileInputRef}
+                onChange={handleCustomWallpaperFile}
+              />
 
               {/* ----- checklist ----- */}
 
@@ -1884,7 +2040,7 @@ function TasksInner() {
                 sx={{
                   flex: 1, minHeight: 0, overflowY: "auto",
                   px: { xs: 1, sm: 2 }, py: { xs: 1.2, sm: 1.8 },
-                  background: WALLPAPERS[wallpaper]?.bg || WALLPAPERS.default.bg,
+                  background: currentChatBackground,
                   WebkitOverflowScrolling: "touch",
                   "&::-webkit-scrollbar": { width: 5 },
                   "&::-webkit-scrollbar-thumb": { background: "#D8D1E5", borderRadius: 10 },
@@ -2352,7 +2508,7 @@ function TasksInner() {
                   {users.map((member) => (
                     <MenuItem key={member._id} value={member._id}>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
+                        <Avatar src={getUserAvatar(member)} sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
                           {getInitial(member)}
                         </Avatar>
                         <Box>
@@ -2413,7 +2569,7 @@ function TasksInner() {
                   {users.map((member) => (
                     <MenuItem key={member._id} value={member._id}>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
+                        <Avatar src={getUserAvatar(member)} sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
                           {getInitial(member)}
                         </Avatar>
                         <Typography sx={{ fontSize: 13, fontWeight: 600 }}>
