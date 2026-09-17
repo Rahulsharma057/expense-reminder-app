@@ -1,6 +1,6 @@
 const User = require("../models/User");
 const { asyncHandler } = require("../middleware/errorHandler");
-const { cloudinary } = require("../utils/cloudinary");
+const { cloudinary } = require("../config/cloudinary");
 
 /*
 |--------------------------------------------------------------------------
@@ -116,15 +116,21 @@ const buildVisibilityFilter = (user) => {
   | - Himself
   | - Users created by him
   | - SuperAdmin
-  |--------------------------------------------------------------------------
+  |
   */
 
   if (role === "owner") {
     return {
       $or: [
-        { _id: user._id },
-        { createdBy: user._id },
-        { role: "superadmin" },
+        {
+          _id: user._id,
+        },
+        {
+          createdBy: user._id,
+        },
+        {
+          role: "superadmin",
+        },
       ],
     };
   }
@@ -139,15 +145,23 @@ const buildVisibilityFilter = (user) => {
   | - His creator
   | - Users created by his creator
   | - SuperAdmin
-  |--------------------------------------------------------------------------
+  |
   */
 
   return {
     $or: [
-      { _id: user._id },
-      { _id: user.createdBy },
-      { createdBy: user.createdBy },
-      { role: "superadmin" },
+      {
+        _id: user._id,
+      },
+      {
+        _id: user.createdBy,
+      },
+      {
+        createdBy: user.createdBy,
+      },
+      {
+        role: "superadmin",
+      },
     ],
   };
 };
