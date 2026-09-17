@@ -16,7 +16,10 @@ const reminderRoutes = require("./routes/reminderRoutes");
 const pushRoutes = require("./routes/pushRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const taskRoutes = require("./routes/taskRoutes");
-
+const goalRoutes = require("./routes/goalRoutes");
+const noteRoutes = require("./routes/noteRoutes");
+const appointmentRoutes = require("./routes/appointmentRoutes");
+const brandSettingsRoutes = require("./routes/brandSettingsRoutes");
 // NEW: notification bell + task templates. These are new files, no
 // name collision with anything that already exists.
 const notificationRoutes = require("./routes/notificationRoutes");
@@ -26,6 +29,12 @@ const templateRoutes = require("./routes/templateRoutes");
 // your existing expense reminderScheduler — this one only looks at
 // the Task collection.
 const { startDueDateReminderJob } = require("./jobs/dueDateReminder");
+
+// NEW: checklist module — create checklists, assign to owner/members,
+// per-item status + remarks, Daily/Weekly auto-reset, due-date and
+// reset push notifications. Separate cron from the two above.
+const checklistRoutes = require("./routes/checklistRoutes");
+const startChecklistCron = require("./jobs/checklistCron");
 
 const app = express();
 
@@ -148,6 +157,12 @@ app.use("/api/meetings", require("./routes/meetingRoutes"));
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/templates", templateRoutes);
 
+// NEW: checklist module — CRUD, item status updates, cancel/reopen.
+app.use("/api/checklists", checklistRoutes);
+app.use("/api/goals", goalRoutes);
+app.use("/api/notes", noteRoutes);
+app.use("/api/appointments", appointmentRoutes);
+app.use("/api/brand-settings", brandSettingsRoutes);
 /* =========================================================
   ERROR HANDLING
 ========================================================= */
@@ -179,6 +194,10 @@ connectDB()
       // tomorrow. Safe to start even if VAPID/web-push isn't
       // configured — it still creates in-app notifications either way.
       startDueDateReminderJob();
+
+      // NEW: daily 00:05 job that resets Daily/Weekly checklists and
+      // sends due/overdue reminders for all checklist types.
+      startChecklistCron();
     });
   })
   .catch((error) => {

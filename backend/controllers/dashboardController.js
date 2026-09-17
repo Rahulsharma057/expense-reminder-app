@@ -17,18 +17,34 @@ const getSummary = asyncHandler(async (req, res) => {
 
   const userId = req.user._id;
 
+  /*
+  =========================================================
+  DATE RANGE
+  =========================================================
+  */
+
   const now = new Date();
 
+  // Start of current month
   const startOfThisMonth = new Date(
     now.getFullYear(),
     now.getMonth(),
-    1
+    1,
+    0,
+    0,
+    0,
+    0
   );
 
+  // Start of previous month
   const startOfLastMonth = new Date(
     now.getFullYear(),
     now.getMonth() - 1,
-    1
+    1,
+    0,
+    0,
+    0,
+    0
   );
 
   /*
@@ -36,22 +52,32 @@ const getSummary = asyncHandler(async (req, res) => {
   IMPORTANT
   =========================================================
 
-  Every Expense query MUST belong to the logged-in user.
+  Expense model DOES NOT have "user".
 
-  Every Reminder query MUST belong to the logged-in user.
+  Expense model has:
+    createdBy: ObjectId -> User
 
-  Assuming both models have:
-    user: ObjectId -> User
+  So every Expense query must use:
+    createdBy: userId
+
+  Reminder is kept on "user" because your current
+  Reminder controller/model is expected to use user.
   =========================================================
   */
 
   const userExpenseFilter = {
-    user: userId,
+    createdBy: userId,
   };
 
   const userReminderFilter = {
     user: userId,
   };
+
+  /*
+  =========================================================
+  RUN ALL QUERIES
+  =========================================================
+  */
 
   const [
     thisMonthAgg,
@@ -71,17 +97,21 @@ const getSummary = asyncHandler(async (req, res) => {
       {
         $match: {
           ...userExpenseFilter,
+
           date: {
             $gte: startOfThisMonth,
           },
         },
       },
+
       {
         $group: {
           _id: null,
+
           sum: {
             $sum: "$amount",
           },
+
           count: {
             $sum: 1,
           },
@@ -99,15 +129,18 @@ const getSummary = asyncHandler(async (req, res) => {
       {
         $match: {
           ...userExpenseFilter,
+
           date: {
             $gte: startOfLastMonth,
             $lt: startOfThisMonth,
           },
         },
       },
+
       {
         $group: {
           _id: null,
+
           sum: {
             $sum: "$amount",
           },
@@ -125,24 +158,34 @@ const getSummary = asyncHandler(async (req, res) => {
       {
         $match: {
           ...userExpenseFilter,
+
           date: {
             $gte: startOfThisMonth,
           },
+
+          recipientName: {
+            $exists: true,
+            $ne: "",
+          },
         },
       },
+
       {
         $group: {
           _id: "$recipientName",
+
           sum: {
             $sum: "$amount",
           },
         },
       },
+
       {
         $sort: {
           sum: -1,
         },
       },
+
       {
         $limit: 5,
       },
@@ -150,7 +193,7 @@ const getSummary = asyncHandler(async (req, res) => {
 
     /*
     =======================================================
-    EXPENSE BY MODE
+    EXPENSE BY PAYMENT MODE
     =======================================================
     */
 
@@ -158,17 +201,26 @@ const getSummary = asyncHandler(async (req, res) => {
       {
         $match: {
           ...userExpenseFilter,
+
           date: {
             $gte: startOfThisMonth,
           },
         },
       },
+
       {
         $group: {
           _id: "$mode",
+
           sum: {
             $sum: "$amount",
           },
+        },
+      },
+
+      {
+        $sort: {
+          sum: -1,
         },
       },
     ]),
@@ -181,6 +233,7 @@ const getSummary = asyncHandler(async (req, res) => {
 
     Reminder.countDocuments({
       ...userReminderFilter,
+
       status: "pending",
     }),
 
@@ -192,7 +245,9 @@ const getSummary = asyncHandler(async (req, res) => {
 
     Reminder.countDocuments({
       ...userReminderFilter,
+
       status: "pending",
+
       dueDate: {
         $lt: now,
       },
@@ -201,30 +256,49 @@ const getSummary = asyncHandler(async (req, res) => {
 
   /*
   =========================================================
-  RESPONSE
+  RESPONSE VALUES
   =========================================================
   */
 
-  return res.json({
-    thisMonthTotal: thisMonthAgg[0]?.sum || 0,
+  const thisMonthTotal =
+    thisMonthAgg[0]?.sum || 0;
 
-    thisMonthCount: thisMonthAgg[0]?.count || 0,
+  const thisMonthCount =
+    thisMonthAgg[0]?.count || 0;
 
-    lastMonthTotal: lastMonthAgg[0]?.sum || 0,
+  const lastMonthTotal =
+    lastMonthAgg[0]?.sum || 0;
 
-    topRecipients: byRecipient.map((item) => ({
-      name: item._id,
-      total: item.sum,
-    })),
+  /*
+  =========================================================
+  SEND RESPONSE
+  =========================================================
+  */
 
-    byMode: byMode.map((item) => ({
-      mode: item._id,
-      total: item.sum,
-    })),
+  return res.status(200).json({
+    thisMonthTotal,
 
-    pendingReminders: pendingCount,
+    thisMonthCount,
 
-    overdueReminders: overdueCount,
+    lastMonthTotal,
+
+    topRecipients: byRecipient.map(
+      (item) => ({
+        name: item._id || "Unknown",
+        total: item.sum || 0,
+      })
+    ),
+
+    byMode: byMode.map(
+      (item) => ({
+        mode: item._id || "Other",
+        total: item.sum || 0,
+      })
+    ),
+
+    pendingReminders: pendingCount || 0,
+
+    overdueReminders: overdueCount || 0,
   });
 });
 

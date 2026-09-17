@@ -26,9 +26,13 @@ import PeopleRoundedIcon from "@mui/icons-material/PeopleRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import ChecklistRtlRoundedIcon from "@mui/icons-material/ChecklistRtlRounded";
-
+import HandshakeRoundedIcon from "@mui/icons-material/HandshakeRounded";
+import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
+import PlaylistAddCheckRoundedIcon from "@mui/icons-material/PlaylistAddCheckRounded";
+import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
+import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
 import { usePathname, useRouter } from "next/navigation";
-
+import EventRoundedIcon from "@mui/icons-material/EventRounded";
 import { getStoredUser, clearSession } from "../lib/auth";
 
 import NotificationBell from "./Notificationbell";
@@ -67,26 +71,44 @@ export default function Navbar() {
       icon: <ChecklistRtlRoundedIcon />,
     },
     {
+      label: "Checklists",
+      href: "/checklists",
+      icon: <PlaylistAddCheckRoundedIcon />,
+    },
+    {
       label: "Expenses",
       href: "/expenses",
       icon: <ReceiptLongRoundedIcon />,
     },
-  
     {
       label: "Reminders",
       href: "/reminders",
       icon: <NotificationsActiveRoundedIcon />,
     },
-          {
+    {
       label: "Udhaar Khata",
       href: "/udhaar",
-      icon: <ChecklistRtlRoundedIcon />,
+      icon: <HandshakeRoundedIcon />,
     },
-        {
+    {
       label: "Meetings",
       href: "/meetings",
-      icon: <ChecklistRtlRoundedIcon />,
+      icon: <VideocamRoundedIcon />,
     },
+    {
+  label: "Goals",
+  href: "/goals",
+  icon: <EmojiEventsRoundedIcon />,
+},
+{
+  label: "Notes",
+  href: "/notes",
+  icon: <StickyNote2RoundedIcon />,
+},{
+  label: "Appointments",
+  href: "/appointments",
+  icon: <EventRoundedIcon />,
+},
   ];
 
   // Owner AND superadmin both manage users now — superadmin needs the

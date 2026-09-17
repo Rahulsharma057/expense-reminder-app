@@ -26,8 +26,12 @@ import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
-import PaymentsRoundedIcon from "@mui/icons-material/PaymentsRounded";
+import PaymentsRoundedIcon from "@mui/icons-material/Payments";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
+import PlayCircleOutlineRoundedIcon from "@mui/icons-material/PlayCircleOutlineRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Navbar from "../../components/Navbar";
@@ -35,8 +39,9 @@ import StatCard from "../../components/StatCard";
 import api from "../../lib/api";
 
 // =============================================================
-// Collapsible section
+// COLLAPSIBLE SECTION
 // =============================================================
+
 function CollapsibleSection({
   icon,
   iconBg,
@@ -68,7 +73,7 @@ function CollapsibleSection({
           "linear-gradient(145deg, rgba(255,255,255,0.98), rgba(255,252,235,0.95))",
 
         boxShadow:
-          "0 8px 26px rgba(120, 96, 20, 0.07)",
+          "0 8px 26px rgba(120,96,20,0.07)",
 
         backdropFilter: "blur(8px)",
       }}
@@ -106,12 +111,15 @@ function CollapsibleSection({
               flexShrink: 0,
 
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
 
               borderRadius: 1.5,
 
               bgcolor: iconBg,
+
               color: iconColor,
 
               border:
@@ -248,48 +256,179 @@ function CollapsibleSection({
 }
 
 // =============================================================
+// TASK STATUS HELPERS
+// =============================================================
+
+const getTaskStatus = (status) => {
+  switch (status) {
+    case "completed":
+      return {
+        label: "Completed",
+        color: "#15803D",
+        bg: "rgba(34,197,94,0.12)",
+        border: "#BBF7D0",
+        icon: (
+          <CheckCircleRoundedIcon
+            sx={{
+              fontSize: 14,
+            }}
+          />
+        ),
+      };
+
+    case "in-progress":
+      return {
+        label: "In Progress",
+        color: "#B45309",
+        bg: "rgba(245,158,11,0.13)",
+        border: "#FDE68A",
+        icon: (
+          <PlayCircleOutlineRoundedIcon
+            sx={{
+              fontSize: 14,
+            }}
+          />
+        ),
+      };
+
+    default:
+      return {
+        label: "Pending",
+        color: "#A16207",
+        bg: "rgba(250,204,21,0.16)",
+        border: "#FDE68A",
+        icon: (
+          <AccessTimeRoundedIcon
+            sx={{
+              fontSize: 14,
+            }}
+          />
+        ),
+      };
+  }
+};
+
+// =============================================================
 // DASHBOARD
 // =============================================================
+
 function DashboardInner() {
   const router = useRouter();
 
   const [summary, setSummary] =
     useState(null);
 
-  const [loading, setLoading] =
+  const [tasks, setTasks] =
+    useState([]);
+
+  const [summaryLoading, setSummaryLoading] =
     useState(true);
 
-  // =========================================================
-  // LOAD DASHBOARD
-  // =========================================================
+  const [tasksLoading, setTasksLoading] =
+    useState(true);
+
+  // ===========================================================
+  // LOAD DASHBOARD SUMMARY
+  // ===========================================================
+
   useEffect(() => {
-    api
-      .get("/dashboard/summary")
-      .then((res) => {
-        setSummary(res.data);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    const loadSummary = async () => {
+      try {
+        setSummaryLoading(true);
+
+        const response = await api.get(
+          "/dashboard/summary"
+        );
+
+        setSummary(response.data);
+      } catch (error) {
+        console.error(
+          "Dashboard summary error:",
+          error
+        );
+      } finally {
+        setSummaryLoading(false);
+      }
+    };
+
+    loadSummary();
   }, []);
 
-  // =========================================================
-  // MONTHLY DIFFERENCE
-  // =========================================================
+  // ===========================================================
+  // LOAD TASKS
+  // ===========================================================
+
+  useEffect(() => {
+    const loadTasks = async () => {
+      try {
+        setTasksLoading(true);
+
+        const response = await api.get(
+          "/tasks/mine?limit=5"
+        );
+
+        const data = Array.isArray(
+          response.data
+        )
+          ? response.data
+          : response.data?.tasks || [];
+
+        setTasks(data);
+      } catch (error) {
+        console.error(
+          "Dashboard tasks error:",
+          error
+        );
+      } finally {
+        setTasksLoading(false);
+      }
+    };
+
+    loadTasks();
+  }, []);
+
+  // ===========================================================
+  // EXPENSE DATA
+  // ===========================================================
+
   const diff = summary
-    ? summary.thisMonthTotal -
-      summary.lastMonthTotal
+    ? Number(
+        summary.thisMonthTotal || 0
+      ) -
+      Number(
+        summary.lastMonthTotal || 0
+      )
     : 0;
 
   const isIncrease = diff >= 0;
 
-  // =========================================================
-  // FORMAT MONEY
-  // =========================================================
   const formatMoney = (value) =>
-    `₹${(value || 0).toLocaleString(
+    `₹${Number(value || 0).toLocaleString(
       "en-IN"
     )}`;
+
+  // ===========================================================
+  // TASK COUNTS
+  // ===========================================================
+
+  const pendingTasks = tasks.filter(
+    (task) =>
+      task?.status === "pending"
+  ).length;
+
+  const inProgressTasks = tasks.filter(
+    (task) =>
+      task?.status === "in-progress"
+  ).length;
+
+  const completedTasks = tasks.filter(
+    (task) =>
+      task?.status === "completed"
+  ).length;
+
+  // ===========================================================
+  // MAIN UI
+  // ===========================================================
 
   return (
     <Box
@@ -341,7 +480,7 @@ function DashboardInner() {
       }}
     >
       {/* =====================================================
-          SUNFLOWER BACKGROUND DECORATION
+          SUNFLOWER BACKGROUND
       ===================================================== */}
 
       {/* TOP LEFT */}
@@ -535,9 +674,7 @@ function DashboardInner() {
         🌻
       </Box>
 
-      {/* =====================================================
-          SOFT SUNFLOWER DOT PATTERN
-      ===================================================== */}
+      {/* DOT PATTERN */}
       <Box
         sx={{
           position: "fixed",
@@ -566,6 +703,7 @@ function DashboardInner() {
       {/* =====================================================
           NAVBAR
       ===================================================== */}
+
       <Box
         sx={{
           position: "relative",
@@ -579,6 +717,7 @@ function DashboardInner() {
       {/* =====================================================
           CONTENT
       ===================================================== */}
+
       <Box
         sx={{
           position: "relative",
@@ -612,6 +751,7 @@ function DashboardInner() {
           {/* =================================================
               HEADER
           ================================================= */}
+
           <Stack
             direction="row"
             justifyContent="space-between"
@@ -632,7 +772,6 @@ function DashboardInner() {
                 minWidth: 0,
               }}
             >
-              {/* SUNFLOWER HEADER ICON */}
               <Box
                 sx={{
                   width: {
@@ -719,7 +858,7 @@ function DashboardInner() {
                     },
                   }}
                 >
-                  Quick snapshot of your finances
+                  Quick snapshot of your finances and tasks
                 </Typography>
               </Box>
             </Stack>
@@ -739,7 +878,9 @@ function DashboardInner() {
                 />
               }
               onClick={() =>
-                router.push("/expenses/new")
+                router.push(
+                  "/expenses/new"
+                )
               }
               sx={{
                 flexShrink: 0,
@@ -765,7 +906,8 @@ function DashboardInner() {
                   sm: 12.5,
                 },
 
-                whiteSpace: "nowrap",
+                whiteSpace:
+                  "nowrap",
 
                 color: "#422006",
 
@@ -789,9 +931,10 @@ function DashboardInner() {
           </Stack>
 
           {/* =================================================
-              LOADING
+              SUMMARY LOADING
           ================================================= */}
-          {loading ? (
+
+          {summaryLoading ? (
             <Paper
               elevation={0}
               sx={{
@@ -840,8 +983,9 @@ function DashboardInner() {
           ) : (
             <>
               {/* =================================================
-                  STAT CARDS
+                  EXPENSE STAT CARDS
               ================================================= */}
+
               <Grid
                 container
                 spacing={{
@@ -901,13 +1045,13 @@ function DashboardInner() {
                   />
                 </Grid>
 
-                {/* PENDING */}
+                {/* PENDING REMINDERS */}
                 <Grid item xs={6} sm={3}>
                   <StatCard
                     icon={
                       <PendingActionsIcon />
                     }
-                    label="Pending Tasks"
+                    label="Pending Reminders"
                     value={
                       summary?.pendingReminders ??
                       0
@@ -917,13 +1061,13 @@ function DashboardInner() {
                   />
                 </Grid>
 
-                {/* OVERDUE */}
+                {/* OVERDUE REMINDERS */}
                 <Grid item xs={6} sm={3}>
                   <StatCard
                     icon={
                       <WarningAmberIcon />
                     }
-                    label="Overdue Tasks"
+                    label="Overdue Reminders"
                     value={
                       summary?.overdueReminders ??
                       0
@@ -935,8 +1079,802 @@ function DashboardInner() {
               </Grid>
 
               {/* =================================================
-                  COLLAPSIBLE INSIGHTS
+                  TASK OVERVIEW
               ================================================= */}
+
+              <Paper
+                elevation={0}
+                sx={{
+                  mb: {
+                    xs: 1.5,
+                    sm: 1.75,
+                  },
+
+                  p: {
+                    xs: 1.4,
+                    sm: 1.75,
+                  },
+
+                  borderRadius: 3,
+
+                  border:
+                    "1px solid #F1E7B2",
+
+                  background:
+                    "linear-gradient(145deg, rgba(255,255,255,0.98), rgba(255,252,235,0.95))",
+
+                  boxShadow:
+                    "0 8px 26px rgba(120,96,20,0.07)",
+
+                  backdropFilter:
+                    "blur(8px)",
+                }}
+              >
+                {/* TASK HEADER */}
+
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{
+                    mb: 1.25,
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    spacing={1}
+                    sx={{
+                      minWidth: 0,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: {
+                          xs: 30,
+                          sm: 34,
+                        },
+
+                        height: {
+                          xs: 30,
+                          sm: 34,
+                        },
+
+                        display: "flex",
+
+                        alignItems:
+                          "center",
+
+                        justifyContent:
+                          "center",
+
+                        borderRadius: 1.75,
+
+                        bgcolor:
+                          "rgba(250,204,21,0.19)",
+
+                        color: "#CA8A04",
+
+                        border:
+                          "1px solid rgba(202,138,4,0.12)",
+                      }}
+                    >
+                      <TaskAltRoundedIcon
+                        sx={{
+                          fontSize: {
+                            xs: 17,
+                            sm: 19,
+                          },
+                        }}
+                      />
+                    </Box>
+
+                    <Box
+                      sx={{
+                        minWidth: 0,
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          fontSize: {
+                            xs: 13,
+                            sm: 14,
+                          },
+
+                          fontWeight: 800,
+
+                          color: "#3F3517",
+                        }}
+                      >
+                        Task Overview
+                      </Typography>
+
+                      <Typography
+                        sx={{
+                          fontSize: {
+                            xs: 9.5,
+                            sm: 10.5,
+                          },
+
+                          color: "#8A805E",
+                        }}
+                      >
+                        Your latest tasks and progress
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Button
+                    size="small"
+                    endIcon={
+                      <ArrowForwardRoundedIcon
+                        sx={{
+                          fontSize:
+                            15,
+                        }}
+                      />
+                    }
+                    onClick={() =>
+                      router.push(
+                        "/tasks"
+                      )
+                    }
+                    sx={{
+                      flexShrink: 0,
+
+                      minWidth: "auto",
+
+                      px: {
+                        xs: 0.8,
+                        sm: 1.1,
+                      },
+
+                      color: "#9A6B00",
+
+                      textTransform:
+                        "none",
+
+                      fontWeight: 700,
+
+                      fontSize: {
+                        xs: 10,
+                        sm: 11,
+                      },
+
+                      "&:hover": {
+                        background:
+                          "rgba(250,204,21,0.08)",
+                      },
+                    }}
+                  >
+                    View All
+                  </Button>
+                </Stack>
+
+                {/* TASK SUMMARY NUMBERS */}
+
+                <Grid
+                  container
+                  spacing={{
+                    xs: 0.8,
+                    sm: 1,
+                  }}
+                >
+                  {/* PENDING */}
+                  <Grid
+                    item
+                    xs={4}
+                  >
+                    <Box
+                      sx={{
+                        p: {
+                          xs: 1,
+                          sm: 1.2,
+                        },
+
+                        borderRadius: 2,
+
+                        bgcolor:
+                          "rgba(250,204,21,0.10)",
+
+                        border:
+                          "1px solid rgba(234,179,8,0.15)",
+                      }}
+                    >
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={0.6}
+                      >
+                        <AccessTimeRoundedIcon
+                          sx={{
+                            fontSize: 16,
+
+                            color:
+                              "#B77905",
+                          }}
+                        />
+
+                        <Typography
+                          sx={{
+                            fontSize: {
+                              xs: 9,
+                              sm: 10,
+                            },
+
+                            color:
+                              "#857950",
+                          }}
+                        >
+                          Pending
+                        </Typography>
+                      </Stack>
+
+                      <Typography
+                        sx={{
+                          mt: 0.35,
+
+                          fontSize: {
+                            xs: 20,
+                            sm: 22,
+                          },
+
+                          lineHeight: 1,
+
+                          fontWeight: 800,
+
+                          color:
+                            "#8A6100",
+                        }}
+                      >
+                        {pendingTasks}
+                      </Typography>
+                    </Box>
+                  </Grid>
+
+                  {/* IN PROGRESS */}
+                  <Grid
+                    item
+                    xs={4}
+                  >
+                    <Box
+                      sx={{
+                        p: {
+                          xs: 1,
+                          sm: 1.2,
+                        },
+
+                        borderRadius: 2,
+
+                        bgcolor:
+                          "rgba(245,158,11,0.09)",
+
+                        border:
+                          "1px solid rgba(245,158,11,0.14)",
+                      }}
+                    >
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={0.6}
+                      >
+                        <PlayCircleOutlineRoundedIcon
+                          sx={{
+                            fontSize: 16,
+
+                            color:
+                              "#C06F00",
+                          }}
+                        />
+
+                        <Typography
+                          sx={{
+                            fontSize: {
+                              xs: 9,
+                              sm: 10,
+                            },
+
+                            color:
+                              "#857950",
+                          }}
+                        >
+                          In Progress
+                        </Typography>
+                      </Stack>
+
+                      <Typography
+                        sx={{
+                          mt: 0.35,
+
+                          fontSize: {
+                            xs: 20,
+                            sm: 22,
+                          },
+
+                          lineHeight: 1,
+
+                          fontWeight: 800,
+
+                          color:
+                            "#A85D00",
+                        }}
+                      >
+                        {inProgressTasks}
+                      </Typography>
+                    </Box>
+                  </Grid>
+
+                  {/* COMPLETED */}
+                  <Grid
+                    item
+                    xs={4}
+                  >
+                    <Box
+                      sx={{
+                        p: {
+                          xs: 1,
+                          sm: 1.2,
+                        },
+
+                        borderRadius: 2,
+
+                        bgcolor:
+                          "rgba(34,197,94,0.08)",
+
+                        border:
+                          "1px solid rgba(34,197,94,0.13)",
+                      }}
+                    >
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={0.6}
+                      >
+                        <CheckCircleRoundedIcon
+                          sx={{
+                            fontSize: 16,
+
+                            color:
+                              "#15803D",
+                          }}
+                        />
+
+                        <Typography
+                          sx={{
+                            fontSize: {
+                              xs: 9,
+                              sm: 10,
+                            },
+
+                            color:
+                              "#857950",
+                          }}
+                        >
+                          Completed
+                        </Typography>
+                      </Stack>
+
+                      <Typography
+                        sx={{
+                          mt: 0.35,
+
+                          fontSize: {
+                            xs: 20,
+                            sm: 22,
+                          },
+
+                          lineHeight: 1,
+
+                          fontWeight: 800,
+
+                          color:
+                            "#166534",
+                        }}
+                      >
+                        {completedTasks}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+
+                {/* =================================================
+                    RECENT TASKS
+                ================================================= */}
+
+                <Divider
+                  sx={{
+                    my: 1.35,
+
+                    borderColor:
+                      "#EEE3AD",
+                  }}
+                />
+
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  sx={{
+                    mb: 0.8,
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      fontSize: {
+                        xs: 11.5,
+                        sm: 12,
+                      },
+
+                      fontWeight: 750,
+
+                      color:
+                        "#51431B",
+                    }}
+                  >
+                    Recent Tasks
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      fontSize: 9.5,
+
+                      color:
+                        "#9B906A",
+                    }}
+                  >
+                    Latest 5
+                  </Typography>
+                </Stack>
+
+                {tasksLoading ? (
+                  <Box
+                    sx={{
+                      py: 2.5,
+
+                      display: "flex",
+
+                      justifyContent:
+                        "center",
+                    }}
+                  >
+                    <CircularProgress
+                      size={22}
+                      thickness={4}
+                      sx={{
+                        color:
+                          "#EAB308",
+                      }}
+                    />
+                  </Box>
+                ) : tasks.length === 0 ? (
+                  <Box
+                    sx={{
+                      py: 2.5,
+
+                      textAlign:
+                        "center",
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontSize: 11.5,
+
+                        color:
+                          "#948A66",
+                      }}
+                    >
+                      No tasks found.
+                    </Typography>
+
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        router.push(
+                          "/tasks"
+                        )
+                      }
+                      sx={{
+                        mt: 0.8,
+
+                        color:
+                          "#A16207",
+
+                        textTransform:
+                          "none",
+
+                        fontSize: 10.5,
+
+                        fontWeight: 700,
+                      }}
+                    >
+                      Open Tasks
+                    </Button>
+                  </Box>
+                ) : (
+                  <Stack spacing={0.7}>
+                    {tasks
+                      .slice(0, 5)
+                      .map(
+                        (
+                          task,
+                          index
+                        ) => {
+                          const status =
+                            getTaskStatus(
+                              task?.status
+                            );
+
+                          return (
+                            <Box
+                              key={
+                                task?._id ||
+                                index
+                              }
+                              onClick={() =>
+                                router.push(
+                                  `/tasks?task=${task._id}`
+                                )
+                              }
+                              sx={{
+                                p: {
+                                  xs: 0.9,
+                                  sm: 1,
+                                },
+
+                                borderRadius:
+                                  1.8,
+
+                                bgcolor:
+                                  "rgba(255,252,235,0.68)",
+
+                                border:
+                                  "1px solid #F0E6B8",
+
+                                cursor:
+                                  "pointer",
+
+                                transition:
+                                  "all 0.18s ease",
+
+                                "&:hover":
+                                  {
+                                    bgcolor:
+                                      "#FFF8D7",
+
+                                    borderColor:
+                                      "#E3CC69",
+
+                                    transform:
+                                      "translateY(-1px)",
+                                  },
+                              }}
+                            >
+                              <Stack
+                                direction="row"
+                                alignItems="center"
+                                spacing={
+                                  0.9
+                                }
+                              >
+                                {/* NUMBER / ICON */}
+
+                                <Box
+                                  sx={{
+                                    width: 26,
+
+                                    height: 26,
+
+                                    flexShrink: 0,
+
+                                    display:
+                                      "flex",
+
+                                    alignItems:
+                                      "center",
+
+                                    justifyContent:
+                                      "center",
+
+                                    borderRadius:
+                                      1.35,
+
+                                    bgcolor:
+                                      index ===
+                                      0
+                                        ? "rgba(250,204,21,0.22)"
+                                        : "rgba(250,204,21,0.10)",
+
+                                    color:
+                                      "#A16207",
+                                  }}
+                                >
+                                  <Typography
+                                    sx={{
+                                      fontSize:
+                                        10,
+
+                                      fontWeight:
+                                        800,
+                                    }}
+                                  >
+                                    {index +
+                                      1}
+                                  </Typography>
+                                </Box>
+
+                                {/* TASK TITLE */}
+
+                                <Box
+                                  sx={{
+                                    minWidth: 0,
+
+                                    flex: 1,
+                                  }}
+                                >
+                                  <Typography
+                                    sx={{
+                                      fontSize:
+                                        {
+                                          xs: 11.5,
+                                          sm: 12,
+                                        },
+
+                                      fontWeight:
+                                        650,
+
+                                      color:
+                                        "#4B401D",
+
+                                      overflow:
+                                        "hidden",
+
+                                      textOverflow:
+                                        "ellipsis",
+
+                                      whiteSpace:
+                                        "nowrap",
+                                    }}
+                                  >
+                                    {
+                                      task?.title
+                                    }
+                                  </Typography>
+
+                                  <Stack
+                                    direction="row"
+                                    spacing={
+                                      0.8
+                                    }
+                                    sx={{
+                                      mt: 0.2,
+                                    }}
+                                  >
+                                    <Typography
+                                      sx={{
+                                        fontSize:
+                                          8.8,
+
+                                        color:
+                                          "#9A906D",
+
+                                        overflow:
+                                          "hidden",
+
+                                        textOverflow:
+                                          "ellipsis",
+
+                                        whiteSpace:
+                                          "nowrap",
+                                      }}
+                                    >
+                                      {task?.mode ||
+                                        "INDIVIDUAL"}
+                                    </Typography>
+
+                                    {task?.dueDate && (
+                                      <>
+                                        <Typography
+                                          sx={{
+                                            fontSize:
+                                              8.8,
+
+                                            color:
+                                              "#C7BC94",
+                                          }}
+                                        >
+                                          •
+                                        </Typography>
+
+                                        <Typography
+                                          sx={{
+                                            fontSize:
+                                              8.8,
+
+                                            color:
+                                              "#9A906D",
+
+                                            whiteSpace:
+                                              "nowrap",
+                                          }}
+                                        >
+                                          Due{" "}
+                                          {
+                                            task.dueDate
+                                          }
+                                        </Typography>
+                                      </>
+                                    )}
+                                  </Stack>
+                                </Box>
+
+                                {/* STATUS */}
+
+                                <Chip
+                                  icon={
+                                    status.icon
+                                  }
+                                  label={
+                                    status.label
+                                  }
+                                  size="small"
+                                  sx={{
+                                    flexShrink:
+                                      0,
+
+                                    height: {
+                                      xs: 23,
+                                      sm: 25,
+                                    },
+
+                                    bgcolor:
+                                      status.bg,
+
+                                    color:
+                                      status.color,
+
+                                    border:
+                                      `1px solid ${status.border}`,
+
+                                    fontSize:
+                                      {
+                                        xs: 8.5,
+                                        sm: 9,
+                                      },
+
+                                    fontWeight:
+                                      700,
+
+                                    "& .MuiChip-icon":
+                                      {
+                                        color:
+                                          status.color,
+
+                                        ml: 0.5,
+                                      },
+
+                                    "& .MuiChip-label":
+                                      {
+                                        px: {
+                                          xs: 0.65,
+                                          sm: 0.8,
+                                        },
+                                      },
+                                  }}
+                                />
+                              </Stack>
+                            </Box>
+                          );
+                        }
+                      )}
+                  </Stack>
+                )}
+              </Paper>
+
+              {/* =================================================
+                  INSIGHTS
+              ================================================= */}
+
               <Grid
                 container
                 spacing={{
@@ -945,7 +1883,12 @@ function DashboardInner() {
                 }}
               >
                 {/* TOP RECIPIENTS */}
-                <Grid item xs={12} md={6}>
+
+                <Grid
+                  item
+                  xs={12}
+                  md={6}
+                >
                   <CollapsibleSection
                     icon={
                       <ReceiptLongRoundedIcon
@@ -960,7 +1903,8 @@ function DashboardInner() {
                     subtitle="Tap to view this month's spending"
                     chipLabel="This month"
                     isEmpty={
-                      !summary?.topRecipients
+                      !summary
+                        ?.topRecipients
                         ?.length
                     }
                     emptyText="No expenses yet this month."
@@ -969,13 +1913,16 @@ function DashboardInner() {
                       {summary?.topRecipients?.map(
                         (r, index) => (
                           <Box
-                            key={r.name}
+                            key={
+                              r.name
+                            }
                             sx={{
                               py: 0.85,
 
                               borderBottom:
                                 index !==
-                                summary.topRecipients
+                                summary
+                                  .topRecipients
                                   .length -
                                   1
                                   ? "1px solid"
@@ -996,7 +1943,8 @@ function DashboardInner() {
                                 alignItems="center"
                                 spacing={1}
                                 sx={{
-                                  minWidth: 0,
+                                  minWidth:
+                                    0,
                                 }}
                               >
                                 <Box
@@ -1005,7 +1953,8 @@ function DashboardInner() {
 
                                     height: 21,
 
-                                    flexShrink: 0,
+                                    flexShrink:
+                                      0,
 
                                     display:
                                       "flex",
@@ -1020,29 +1969,34 @@ function DashboardInner() {
                                       "50%",
 
                                     bgcolor:
-                                      index === 0
+                                      index ===
+                                      0
                                         ? "rgba(250,204,21,0.25)"
                                         : "rgba(250,204,21,0.08)",
 
                                     color:
-                                      index === 0
+                                      index ===
+                                      0
                                         ? "#A16207"
                                         : "#8A805E",
 
                                     fontSize: 9.5,
 
-                                    fontWeight: 800,
+                                    fontWeight:
+                                      800,
 
                                     border:
                                       "1px solid rgba(202,138,4,0.10)",
                                   }}
                                 >
-                                  {index + 1}
+                                  {index +
+                                    1}
                                 </Box>
 
                                 <Typography
                                   sx={{
-                                    minWidth: 0,
+                                    minWidth:
+                                      0,
 
                                     overflow:
                                       "hidden",
@@ -1055,24 +2009,31 @@ function DashboardInner() {
 
                                     fontSize: 12,
 
-                                    fontWeight: 550,
+                                    fontWeight:
+                                      550,
 
-                                    color: "#4B401D",
+                                    color:
+                                      "#4B401D",
                                   }}
                                 >
-                                  {r.name}
+                                  {
+                                    r.name
+                                  }
                                 </Typography>
                               </Stack>
 
                               <Typography
                                 sx={{
-                                  flexShrink: 0,
+                                  flexShrink:
+                                    0,
 
                                   fontSize: 12,
 
-                                  fontWeight: 750,
+                                  fontWeight:
+                                    750,
 
-                                  color: "#3D3214",
+                                  color:
+                                    "#3D3214",
                                 }}
                               >
                                 {formatMoney(
@@ -1088,7 +2049,12 @@ function DashboardInner() {
                 </Grid>
 
                 {/* PAYMENT MODE */}
-                <Grid item xs={12} md={6}>
+
+                <Grid
+                  item
+                  xs={12}
+                  md={6}
+                >
                   <CollapsibleSection
                     icon={
                       <PaymentsRoundedIcon
@@ -1103,7 +2069,9 @@ function DashboardInner() {
                     subtitle="Tap to view how you paid"
                     chipLabel="Breakdown"
                     isEmpty={
-                      !summary?.byMode?.length
+                      !summary
+                        ?.byMode
+                        ?.length
                     }
                     emptyText="No expenses yet this month."
                   >
@@ -1115,7 +2083,8 @@ function DashboardInner() {
                             sx={{
                               p: 1,
 
-                              borderRadius: 1.75,
+                              borderRadius:
+                                1.75,
 
                               bgcolor:
                                 "rgba(255,251,225,0.62)",
@@ -1135,7 +2104,8 @@ function DashboardInner() {
                                 alignItems="center"
                                 spacing={1}
                                 sx={{
-                                  minWidth: 0,
+                                  minWidth:
+                                    0,
                                 }}
                               >
                                 <Box
@@ -1144,7 +2114,8 @@ function DashboardInner() {
 
                                     height: 7,
 
-                                    flexShrink: 0,
+                                    flexShrink:
+                                      0,
 
                                     borderRadius:
                                       "50%",
@@ -1161,9 +2132,11 @@ function DashboardInner() {
                                   sx={{
                                     fontSize: 12,
 
-                                    fontWeight: 600,
+                                    fontWeight:
+                                      600,
 
-                                    color: "#4B401D",
+                                    color:
+                                      "#4B401D",
 
                                     overflow:
                                       "hidden",
@@ -1181,13 +2154,16 @@ function DashboardInner() {
 
                               <Typography
                                 sx={{
-                                  flexShrink: 0,
+                                  flexShrink:
+                                    0,
 
                                   fontSize: 12,
 
-                                  fontWeight: 750,
+                                  fontWeight:
+                                    750,
 
-                                  color: "#3D3214",
+                                  color:
+                                    "#3D3214",
                                 }}
                               >
                                 {formatMoney(
@@ -1209,6 +2185,7 @@ function DashboardInner() {
         {/* =====================================================
             QUICK ACTIONS
         ===================================================== */}
+
         <Box
           sx={{
             position: "sticky",
@@ -1251,6 +2228,7 @@ function DashboardInner() {
               }}
             >
               {/* ADD */}
+
               <Button
                 fullWidth
                 variant="contained"
@@ -1305,6 +2283,7 @@ function DashboardInner() {
               </Button>
 
               {/* EXPENSES */}
+
               <Button
                 fullWidth
                 variant="outlined"
@@ -1359,6 +2338,7 @@ function DashboardInner() {
               </Button>
 
               {/* REMINDERS */}
+
               <Button
                 fullWidth
                 variant="outlined"
@@ -1422,6 +2402,7 @@ function DashboardInner() {
 // =============================================================
 // PAGE EXPORT
 // =============================================================
+
 export default function DashboardPage() {
   return (
     <ProtectedRoute>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import {
   Alert, Avatar, AvatarGroup, Badge, Box, Button, Checkbox, Chip,
@@ -13,7 +14,7 @@ import {
   Add, ArrowBack, Check, CheckCircle, Close, Delete, Done, DoneAll,
   Download, Edit, ExpandLess, ExpandMore, Groups, Image as ImageIcon,
   MoreVert, PushPin, PushPinOutlined, Refresh, Repeat, Send, TaskAlt,
-  AccessTime, PlaylistAddCheck,
+  AccessTime, PlaylistAddCheck, SettingsRounded,
 } from "@mui/icons-material";
 
 import { toast } from "react-toastify";
@@ -53,6 +54,15 @@ const PRIORITY_OPTIONS = [
   { value: "medium", label: "Medium", color: "#B45309" },
   { value: "high", label: "High", color: "#DC2626" },
 ];
+
+// NEW: chat wallpapers, restored from the old standalone chat page.
+const WALLPAPERS = {
+  default: { label: "Lavender", bg: "linear-gradient(180deg, #f7f5fc, #efe9fb)" },
+  doodle: { label: "Soft grid", bg: "repeating-linear-gradient(45deg, #f5f2fb, #f5f2fb 10px, #ece6f8 10px, #ece6f8 20px)" },
+  mint: { label: "Mint", bg: "linear-gradient(180deg,#eafaf4,#dcf3ea)" },
+  peach: { label: "Peach", bg: "linear-gradient(180deg,#fff3ea,#ffe6d8)" },
+  dark: { label: "Midnight", bg: "linear-gradient(180deg,#221d33,#191527)" },
+};
 
 const PALETTE = ["#0ea5e9", "#16a34a", "#f97316", "#db2777", "#7c3aed", "#0d9488", "#ca8a04"];
 
@@ -404,15 +414,22 @@ function ChecklistPanel({
 }
 
 /* =========================================================
-   PAGE
+   PAGE (inner — wrapped in Suspense below because it reads
+   useSearchParams, which Next.js requires a Suspense boundary for)
 ========================================================= */
 
 function TasksInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const fileInputRef = useRef(null);
   const chatBottomRef = useRef(null);
   const chatScrollRef = useRef(null);
+  const loadMoreSentinelRef = useRef(null);
   const selectedIdRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const isLoadingOlderRef = useRef(false);
+  const autoOpenedFromUrlRef = useRef(false);
 
   const [user, setUser] = useState(null);
 
@@ -431,8 +448,13 @@ function TasksInner() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [checklistOpen, setChecklistOpen] = useState(false);
 
-  // NEW: who's typing right now in the open chat (null = nobody).
   const [typingUser, setTypingUser] = useState(null);
+
+  // NEW: chat wallpaper + dark mode (device-level preference, same as
+  // the old standalone chat page used to have).
+  const [wallpaper, setWallpaper] = useState("default");
+  const [chatDarkMode, setChatDarkMode] = useState(false);
+  const [chatSettingsAnchor, setChatSettingsAnchor] = useState(null);
 
   /* ---------------- create task ---------------- */
 
@@ -485,6 +507,41 @@ function TasksInner() {
   }, []);
 
   /* =======================================================
+     NEW: CHAT WALLPAPER / DARK MODE — device-level preference,
+     loaded once, persisted to localStorage.
+  ======================================================= */
+
+  useEffect(() => {
+    try {
+      const savedWallpaper = window.localStorage.getItem("chatWallpaper");
+      const savedDark = window.localStorage.getItem("chatDark");
+      if (savedWallpaper && WALLPAPERS[savedWallpaper]) setWallpaper(savedWallpaper);
+      if (savedDark) setChatDarkMode(savedDark === "1");
+    } catch {
+      // localStorage can throw in some private-browsing modes — fine
+      // to just fall back to defaults.
+    }
+  }, []);
+
+  const pickWallpaper = (key) => {
+    setWallpaper(key);
+    try {
+      window.localStorage.setItem("chatWallpaper", key);
+    } catch {}
+    setChatSettingsAnchor(null);
+  };
+
+  const toggleChatDarkMode = () => {
+    setChatDarkMode((previous) => {
+      const next = !previous;
+      try {
+        window.localStorage.setItem("chatDark", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  };
+
+  /* =======================================================
      LOAD TASKS / USERS
   ======================================================= */
 
@@ -492,8 +549,8 @@ function TasksInner() {
     try {
       setLoading(true);
       const response = await api.get("/tasks/mine");
-      // v3 backend returns { tasks, page, limit, total, hasMore }
-      // instead of a bare array — this already handles both shapes.
+      // Backend may return either a bare array or { tasks, ... } —
+      // this handles both shapes.
       const data = Array.isArray(response.data)
         ? response.data
         : response.data?.tasks || [];
@@ -513,8 +570,6 @@ function TasksInner() {
         ? response.data
         : response.data?.users || response.data?.data || [];
 
-      // Everyone active except me — this is who I can assign to, and it
-      // now includes the superadmin so anyone can start a chat with them.
       setUsers(
         data.filter(
           (item) => item?.isActive !== false && !sameId(item?._id, myId)
@@ -534,6 +589,81 @@ function TasksInner() {
   useEffect(() => {
     if (myId) loadUsers();
   }, [myId, loadUsers]);
+
+  /* =======================================================
+     OPEN / CLOSE TASK — defined before the deep-link effect
+     below so it can be called from there.
+
+     GET /tasks/:id is metadata-only; messages come from a
+     separate GET /tasks/:id/messages call.
+  ======================================================= */
+
+  const openTask = useCallback(async (task) => {
+    try {
+      setTaskLoading(true);
+      setChecklistOpen(false);
+      setTypingUser(null);
+
+      const [taskRes, messagesRes] = await Promise.all([
+        api.get(`/tasks/${task._id}`),
+        api.get(`/tasks/${task._id}/messages?limit=30`),
+      ]);
+
+      setSelectedTask({
+        ...taskRes.data,
+        messages: messagesRes.data?.messages || [],
+      });
+      setHasMoreMessages(Boolean(messagesRes.data?.hasMore));
+
+      setTasks((previous) =>
+        previous.map((item) =>
+          item._id === task._id ? { ...item, unread: false } : item
+        )
+      );
+
+      api.patch(`/tasks/${task._id}/messages/seen`).catch(() => {});
+
+      requestAnimationFrame(() =>
+        chatBottomRef.current?.scrollIntoView({ block: "end" })
+      );
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not open task"));
+    } finally {
+      setTaskLoading(false);
+    }
+  }, []);
+
+  /* =======================================================
+     FIX: opening a chat from a deep link — e.g. the
+     notification bell sends the user to /tasks?open=<taskId>.
+     Nothing previously read that query param, so clicking a
+     notification just landed on the plain task list. This
+     resolves it once the task list has loaded.
+  ======================================================= */
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || loading || autoOpenedFromUrlRef.current) return;
+
+    autoOpenedFromUrlRef.current = true;
+
+    const existing = tasks.find((task) => task._id === openId);
+
+    if (existing) {
+      openTask(existing);
+    } else {
+      // Not in "my tasks" preview yet (rare — e.g. very first load
+      // race) — fetch it directly by id instead of giving up.
+      api
+        .get(`/tasks/${openId}`)
+        .then((res) => openTask(res.data))
+        .catch(() => toast.error("Could not open that task"));
+    }
+
+    // Clean the URL so a refresh or the back button doesn't try to
+    // reopen the same chat again.
+    router.replace("/tasks");
+  }, [searchParams, loading, tasks, openTask, router]);
 
   /* =======================================================
      REALTIME — user room
@@ -558,8 +688,6 @@ function TasksInner() {
       if (selectedIdRef.current === taskId) setSelectedTask(null);
     };
 
-    // Keeps the list preview line ("Ravi: on my way") live even when
-    // that chat isn't open.
     const onNotification = (payload) => {
       if (payload?.type !== "NEW_MESSAGE" || !payload?.task) return;
       setTasks((previous) =>
@@ -614,8 +742,6 @@ function TasksInner() {
         };
       });
 
-      // Someone else's message and I'm looking at the chat → mark seen
-      // immediately so THEIR ticks turn blue.
       if (!sameId(payload.message.sender, myId)) {
         api.patch(`/tasks/${taskId}/messages/seen`).catch(() => {});
       }
@@ -659,7 +785,6 @@ function TasksInner() {
       );
     };
 
-    // This is what flips MY ticks from grey to blue.
     const onMessagesSeen = (payload) => {
       if (!forThisTask(payload)) return;
       setSelectedTask((previous) =>
@@ -741,8 +866,6 @@ function TasksInner() {
       );
     };
 
-    // NEW: typing indicator. Backend just relays { userName } to
-    // everyone else in the room — it never echoes back to the sender.
     const onTyping = ({ userName }) => {
       setTypingUser(userName);
       clearTimeout(typingTimeoutRef.current);
@@ -777,50 +900,6 @@ function TasksInner() {
     };
   }, [selectedTask?._id, myId]);
 
-  /* =======================================================
-     OPEN / CLOSE TASK
-
-     IMPORTANT (v3 backend change): GET /tasks/:id no longer returns
-     `messages` — that endpoint is now pure metadata, since messages
-     live in their own Message collection. Opening a task now needs
-     TWO calls: the task itself, and the first page of its messages.
-  ======================================================= */
-
-  const openTask = async (task) => {
-    try {
-      setTaskLoading(true);
-      setChecklistOpen(false);
-      setTypingUser(null);
-
-      const [taskRes, messagesRes] = await Promise.all([
-        api.get(`/tasks/${task._id}`),
-        api.get(`/tasks/${task._id}/messages?limit=30`),
-      ]);
-
-      setSelectedTask({
-        ...taskRes.data,
-        messages: messagesRes.data?.messages || [],
-      });
-      setHasMoreMessages(Boolean(messagesRes.data?.hasMore));
-
-      setTasks((previous) =>
-        previous.map((item) =>
-          item._id === task._id ? { ...item, unread: false } : item
-        )
-      );
-
-      api.patch(`/tasks/${task._id}/messages/seen`).catch(() => {});
-
-      requestAnimationFrame(() =>
-        chatBottomRef.current?.scrollIntoView({ block: "end" })
-      );
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Could not open task"));
-    } finally {
-      setTaskLoading(false);
-    }
-  };
-
   const closeTask = () => {
     setSelectedTask(null);
     setEditingMessage(null);
@@ -833,12 +912,16 @@ function TasksInner() {
 
   /* =======================================================
      LAZY LOAD OLDER MESSAGES
-     (unchanged — this endpoint's shape already matched the new
-     backend: GET /tasks/:id/messages?before=&limit=)
+
+     FIX: previously only triggered off `scrollTop < 60`, which is
+     unreliable — a short chat's scrollTop never leaves 0, and a
+     freshly-rendered flex container can report stale scroll metrics
+     for a frame. isLoadingOlderRef (a ref, not state) guards against
+     duplicate fetches even if this fires from a stale closure.
   ======================================================= */
 
-  const loadOlderMessages = async () => {
-    if (!selectedTask?._id || loadingOlder || !hasMoreMessages) return;
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedTask?._id || isLoadingOlderRef.current || !hasMoreMessages) return;
 
     const oldest = selectedTask.messages?.[0];
     if (!oldest) return;
@@ -846,9 +929,10 @@ function TasksInner() {
     const container = chatScrollRef.current;
     const previousHeight = container?.scrollHeight || 0;
 
-    try {
-      setLoadingOlder(true);
+    isLoadingOlderRef.current = true;
+    setLoadingOlder(true);
 
+    try {
       const response = await api.get(
         `/tasks/${selectedTask._id}/messages?before=${encodeURIComponent(
           oldest.createdAt
@@ -875,13 +959,38 @@ function TasksInner() {
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not load older messages"));
     } finally {
+      isLoadingOlderRef.current = false;
       setLoadingOlder(false);
     }
+  }, [selectedTask?._id, selectedTask?.messages, hasMoreMessages]);
+
+  // Manual fallback (button) — kept in addition to the observer below.
+  const onChatScroll = (event) => {
+    if (event.currentTarget.scrollTop < 80) loadOlderMessages();
   };
 
-  const onChatScroll = (event) => {
-    if (event.currentTarget.scrollTop < 60) loadOlderMessages();
-  };
+  // NEW: IntersectionObserver-based auto-load. This is the reliable
+  // mechanism — it fires whenever the sentinel div at the top of the
+  // message list actually becomes visible, regardless of flex-layout
+  // scroll-position quirks.
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    const root = chatScrollRef.current;
+    if (!sentinel || !root || !hasMoreMessages) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          loadOlderMessages();
+        }
+      },
+      { root, threshold: 0, rootMargin: "200px 0px 0px 0px" }
+    );
+
+    observer.observe(sentinel);
+
+    return () => observer.disconnect();
+  }, [selectedTask?._id, hasMoreMessages, loadOlderMessages]);
 
   /* =======================================================
      FILTER / COUNTS
@@ -1035,8 +1144,6 @@ function TasksInner() {
     );
   };
 
-  // NEW: emits a "typing" ping to the room. The backend already
-  // relays this (see utils/socket.js) — no server change needed.
   const handleMessageTextChange = (event) => {
     setMessageText(event.target.value);
     if (selectedTask?._id && user?.name) {
@@ -1129,9 +1236,6 @@ function TasksInner() {
     }
   };
 
-  // UPDATED: scope is "me" (hide just for you) or "everyone" (wipe for
-  // the whole chat — only allowed on your own messages; the backend
-  // enforces this regardless of what gets sent here).
   const deleteMessageById = async (message, scope = "me") => {
     setMessageMenu(null);
 
@@ -1149,7 +1253,6 @@ function TasksInner() {
             return { ...item, deleted: true, photoUrl: "", text: "This message was deleted" };
           }
 
-          // "me" — only my own view changes; nobody else sees this.
           return { ...item, hiddenForMe: true, photoUrl: "", text: "" };
         }),
       }));
@@ -1175,7 +1278,6 @@ function TasksInner() {
   };
 
   const toggleChecklistItem = async (item, done) => {
-    // Optimistic — ticking a box should feel instant.
     setSelectedTask((previous) => ({
       ...previous,
       checklist: previous.checklist.map((entry) =>
@@ -1262,6 +1364,18 @@ function TasksInner() {
     () => getChatTitle(selectedTask, myId),
     [selectedTask, myId]
   );
+
+  // NEW: dark-mode-aware colors for the chat panel only (task list and
+  // rest of the app stay on the normal light theme).
+  const chatBg = chatDarkMode ? "#141020" : "#fff";
+  const chatSurfaceBg = chatDarkMode ? "#1c1730" : "#fff";
+  const chatBorderColor = chatDarkMode ? "#2b2347" : "#ECE8F5";
+  const chatHeaderText = chatDarkMode ? "#F1EDFF" : "inherit";
+  const chatSubText = chatDarkMode ? "#B8AFCF" : "#8A8498";
+  const bubbleOtherBg = chatDarkMode ? "#2a2440" : "#fff";
+  const bubbleOtherColor = chatDarkMode ? "#f1edff" : "#332D3A";
+  const bubbleOtherBorder = chatDarkMode ? "none" : "1px solid #EAE6F1";
+  const composerFieldBg = chatDarkMode ? "#241c3d" : "#FAF9FC";
 
   const statusChip = (status) => {
     const map = {
@@ -1499,7 +1613,6 @@ function TasksInner() {
                           <Stack direction="row" alignItems="center" spacing={0.6}>
                             {task.pinned && <PushPin sx={{ fontSize: 13, color: PURPLE, transform: "rotate(45deg)" }} />}
 
-                            {/* Priority dot — quick visual triage without opening the task. */}
                             {task.priority && task.priority !== "medium" && (
                               <Tooltip title={`${pMeta.label} priority`}>
                                 <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: pMeta.color, flexShrink: 0 }} />
@@ -1605,17 +1718,18 @@ function TasksInner() {
                 height: { xs: "100dvh", md: 680 },
                 zIndex: { xs: 1300, md: "auto" },
                 borderRadius: { xs: 0, md: 3 },
-                border: { xs: "none", md: "1px solid #ECE8F5" },
-                bgcolor: "#fff", overflow: "hidden",
+                border: { xs: "none", md: `1px solid ${chatBorderColor}` },
+                bgcolor: chatBg, overflow: "hidden",
+                transition: "background-color 0.2s ease",
               }}
             >
               {/* ----- chat header ----- */}
 
-              <Box sx={{ px: { xs: 1, sm: 2 }, py: { xs: 0.9, sm: 1.3 }, borderBottom: "1px solid #EEEAF4", flexShrink: 0 }}>
+              <Box sx={{ px: { xs: 1, sm: 2 }, py: { xs: 0.9, sm: 1.3 }, borderBottom: `1px solid ${chatBorderColor}`, bgcolor: chatSurfaceBg, flexShrink: 0 }}>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <IconButton
                     onClick={closeTask}
-                    sx={{ display: { xs: "flex", md: "none" }, width: 38, height: 38, color: "#332D3A" }}
+                    sx={{ display: { xs: "flex", md: "none" }, width: 38, height: 38, color: chatDarkMode ? "#EDE9F7" : "#332D3A" }}
                   >
                     <ArrowBack />
                   </IconButton>
@@ -1640,20 +1754,18 @@ function TasksInner() {
                   )}
 
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    {/* The person you're talking to, not just the task title. */}
                     <Typography
                       sx={{
-                        fontWeight: 800, fontSize: 14.5,
+                        fontWeight: 800, fontSize: 14.5, color: chatHeaderText,
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}
                     >
                       {chatTitle}
                     </Typography>
 
-                    {/* Typing indicator replaces the subtitle while active. */}
                     <Typography
                       sx={{
-                        color: typingUser ? PURPLE : "#8A8498", fontSize: 11,
+                        color: typingUser ? PURPLE : chatSubText, fontSize: 11,
                         fontStyle: typingUser ? "italic" : "normal",
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}
@@ -1668,8 +1780,18 @@ function TasksInner() {
                     </Typography>
                   </Box>
 
+                  {/* NEW: chat settings — wallpaper + dark mode. */}
+                  <Tooltip title="Chat settings">
+                    <IconButton
+                      onClick={(event) => setChatSettingsAnchor(event.currentTarget)}
+                      sx={{ color: chatDarkMode ? "#CFC7E6" : "#A9A2B5" }}
+                    >
+                      <SettingsRounded fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+
                   <Tooltip title={selectedTask.pinned ? "Unpin chat" : "Pin chat"}>
-                    <IconButton onClick={(event) => togglePin(selectedTask, event)} sx={{ color: selectedTask.pinned ? PURPLE : "#A9A2B5" }}>
+                    <IconButton onClick={(event) => togglePin(selectedTask, event)} sx={{ color: selectedTask.pinned ? PURPLE : (chatDarkMode ? "#CFC7E6" : "#A9A2B5") }}>
                       {selectedTask.pinned ? <PushPin fontSize="small" /> : <PushPinOutlined fontSize="small" />}
                     </IconButton>
                   </Tooltip>
@@ -1686,7 +1808,7 @@ function TasksInner() {
                     <Select
                       value={selectedTask.status || "pending"}
                       onChange={(event) => updateTaskStatus(selectedTask._id, event.target.value)}
-                      sx={{ borderRadius: 2, fontSize: 12, fontWeight: 700 }}
+                      sx={{ borderRadius: 2, fontSize: 12, fontWeight: 700, bgcolor: chatDarkMode ? "#241c3d" : "transparent", color: chatDarkMode ? "#F1EDFF" : "inherit" }}
                     >
                       {STATUS_OPTIONS.map((item) => (
                         <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
@@ -1694,11 +1816,11 @@ function TasksInner() {
                     </Select>
                   </FormControl>
 
-                  <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: "#F8F6FB", flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: 9.5, color: "#9892A2" }}>Due date</Typography>
+                  <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: chatDarkMode ? "#241c3d" : "#F8F6FB", flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: 9.5, color: chatSubText }}>Due date</Typography>
                     <Typography
                       sx={{
-                        fontSize: 12, fontWeight: 700, color: "#38313F",
+                        fontSize: 12, fontWeight: 700, color: chatDarkMode ? "#F1EDFF" : "#38313F",
                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       }}
                     >
@@ -1707,8 +1829,8 @@ function TasksInner() {
                   </Box>
 
                   {selectedTask.priority && (
-                    <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: "#F8F6FB", minWidth: 70 }}>
-                      <Typography sx={{ fontSize: 9.5, color: "#9892A2" }}>Priority</Typography>
+                    <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: chatDarkMode ? "#241c3d" : "#F8F6FB", minWidth: 70 }}>
+                      <Typography sx={{ fontSize: 9.5, color: chatSubText }}>Priority</Typography>
                       <Typography sx={{ fontSize: 12, fontWeight: 700, color: priorityMeta(selectedTask.priority).color, textTransform: "capitalize" }}>
                         {selectedTask.priority}
                       </Typography>
@@ -1716,6 +1838,31 @@ function TasksInner() {
                   )}
                 </Stack>
               </Box>
+
+              {/* ----- chat settings menu (wallpaper + dark mode) ----- */}
+
+              <Menu
+                anchorEl={chatSettingsAnchor}
+                open={Boolean(chatSettingsAnchor)}
+                onClose={() => setChatSettingsAnchor(null)}
+              >
+                <MenuItem onClick={toggleChatDarkMode} sx={{ fontSize: 13, fontWeight: 600 }}>
+                  {chatDarkMode ? "Switch to light chat" : "Switch to dark chat"}
+                </MenuItem>
+
+                <Divider />
+
+                <Typography sx={{ px: 2, pt: 1, pb: 0.5, fontSize: 10.5, fontWeight: 800, color: "#948DA0" }}>
+                  WALLPAPER
+                </Typography>
+
+                {Object.entries(WALLPAPERS).map(([key, w]) => (
+                  <MenuItem key={key} selected={wallpaper === key} onClick={() => pickWallpaper(key)} sx={{ fontSize: 13 }}>
+                    <Box sx={{ width: 18, height: 18, borderRadius: 1, background: w.bg, mr: 1.2, border: "1px solid #ddd", flexShrink: 0 }} />
+                    {w.label}
+                  </MenuItem>
+                ))}
+              </Menu>
 
               {/* ----- checklist ----- */}
 
@@ -1737,7 +1884,8 @@ function TasksInner() {
                 sx={{
                   flex: 1, minHeight: 0, overflowY: "auto",
                   px: { xs: 1, sm: 2 }, py: { xs: 1.2, sm: 1.8 },
-                  bgcolor: "#FBFAFD", WebkitOverflowScrolling: "touch",
+                  background: WALLPAPERS[wallpaper]?.bg || WALLPAPERS.default.bg,
+                  WebkitOverflowScrolling: "touch",
                   "&::-webkit-scrollbar": { width: 5 },
                   "&::-webkit-scrollbar-thumb": { background: "#D8D1E5", borderRadius: 10 },
                 }}
@@ -1751,13 +1899,17 @@ function TasksInner() {
                     <Avatar sx={{ width: 56, height: 56, bgcolor: "#EEE7FF", color: PURPLE, mb: 1.5 }}>
                       <Send />
                     </Avatar>
-                    <Typography sx={{ fontWeight: 800, fontSize: 15 }}>No messages yet</Typography>
-                    <Typography sx={{ color: "#8D8797", fontSize: 12, mt: 0.5 }}>
+                    <Typography sx={{ fontWeight: 800, fontSize: 15, color: chatDarkMode ? "#F1EDFF" : "inherit" }}>No messages yet</Typography>
+                    <Typography sx={{ color: chatDarkMode ? "#B8AFCF" : "#8D8797", fontSize: 12, mt: 0.5 }}>
                       Start the conversation with {chatTitle}.
                     </Typography>
                   </Stack>
                 ) : (
                   <Stack spacing={0.9}>
+                    {/* Sentinel for auto-loading older messages — sits
+                        above everything else in the list. */}
+                    <div ref={loadMoreSentinelRef} style={{ height: 1 }} />
+
                     {hasMoreMessages && (
                       <Stack alignItems="center" sx={{ pb: 1 }}>
                         <Button
@@ -1765,7 +1917,7 @@ function TasksInner() {
                           onClick={loadOlderMessages}
                           disabled={loadingOlder}
                           startIcon={loadingOlder ? <CircularProgress size={13} /> : null}
-                          sx={{ textTransform: "none", fontSize: 11.5, fontWeight: 700, color: PURPLE_DARK, borderRadius: 5 }}
+                          sx={{ textTransform: "none", fontSize: 11.5, fontWeight: 700, color: PURPLE_DARK, borderRadius: 5, bgcolor: chatDarkMode ? "rgba(124,58,237,0.15)" : "transparent" }}
                         >
                           {loadingOlder ? "Loading..." : "Load older messages"}
                         </Button>
@@ -1784,8 +1936,6 @@ function TasksInner() {
                         !isMine &&
                         (!previous || !sameId(previous.sender, message.sender) || showDay);
 
-                      // "Removed" covers both delete-for-everyone (visible
-                      // to all) and delete-for-me (visible only to me).
                       const isRemoved = message.deleted || message.hiddenForMe;
 
                       const canEdit =
@@ -1803,7 +1953,7 @@ function TasksInner() {
                               <Chip
                                 size="small"
                                 label={dayLabel(message.createdAt)}
-                                sx={{ height: 21, fontSize: 10, fontWeight: 700, bgcolor: "#EFEBF7", color: "#6F6880" }}
+                                sx={{ height: 21, fontSize: 10, fontWeight: 700, bgcolor: chatDarkMode ? "rgba(255,255,255,0.08)" : "#EFEBF7", color: chatDarkMode ? "#D7D0EA" : "#6F6880" }}
                               />
                             </Stack>
                           )}
@@ -1831,9 +1981,9 @@ function TasksInner() {
                                 sx={{
                                   p: message.photoUrl && !isRemoved ? 0.6 : 1.1,
                                   borderRadius: isMine ? "16px 16px 5px 16px" : "16px 16px 16px 5px",
-                                  bgcolor: isRemoved ? "#F3F1F7" : isMine ? PURPLE : "#fff",
-                                  color: isRemoved ? "#9A94A3" : isMine ? "#fff" : "#332D3A",
-                                  border: isMine || isRemoved ? "none" : "1px solid #EAE6F1",
+                                  bgcolor: isRemoved ? (chatDarkMode ? "#241c3d" : "#F3F1F7") : isMine ? PURPLE : bubbleOtherBg,
+                                  color: isRemoved ? (chatDarkMode ? "#8A82A3" : "#9A94A3") : isMine ? "#fff" : bubbleOtherColor,
+                                  border: isMine || isRemoved ? "none" : bubbleOtherBorder,
                                   boxShadow: "0 2px 8px rgba(30,20,50,.04)",
                                 }}
                               >
@@ -1938,9 +2088,6 @@ function TasksInner() {
                                     <MessageTicks message={message} memberIds={memberIds} myId={myId} />
                                   )}
 
-                                  {/* Menu is available on ANY non-removed message now —
-                                      not just your own — so "Delete for me" works on
-                                      messages other people sent too. */}
                                   {!isRemoved && (
                                     <IconButton
                                       size="small"
@@ -1971,7 +2118,7 @@ function TasksInner() {
                 sx={{
                   p: { xs: 0.8, sm: 1.2 },
                   pb: { xs: "max(8px, env(safe-area-inset-bottom))", sm: 1.2 },
-                  borderTop: "1px solid #ECE8F3", bgcolor: "#fff", flexShrink: 0,
+                  borderTop: `1px solid ${chatBorderColor}`, bgcolor: chatSurfaceBg, flexShrink: 0,
                 }}
               >
                 <Stack direction="row" spacing={0.8} alignItems="flex-end">
@@ -1982,8 +2129,8 @@ function TasksInner() {
                       onClick={() => fileInputRef.current?.click()}
                       disabled={sendingMessage}
                       sx={{
-                        width: 40, height: 40, color: PURPLE, bgcolor: "#F5F1FF", flexShrink: 0,
-                        "&:hover": { bgcolor: "#EDE5FF" },
+                        width: 40, height: 40, color: PURPLE, bgcolor: chatDarkMode ? "rgba(124,58,237,0.18)" : "#F5F1FF", flexShrink: 0,
+                        "&:hover": { bgcolor: chatDarkMode ? "rgba(124,58,237,0.28)" : "#EDE5FF" },
                       }}
                     >
                       <ImageIcon fontSize="small" />
@@ -2006,7 +2153,8 @@ function TasksInner() {
                     size="small"
                     sx={{
                       "& .MuiOutlinedInput-root": {
-                        borderRadius: 2.5, bgcolor: "#FAF9FC", fontSize: 13, py: 0.3,
+                        borderRadius: 2.5, bgcolor: composerFieldBg, fontSize: 13, py: 0.3,
+                        color: chatDarkMode ? "#F1EDFF" : "inherit",
                       },
                     }}
                   />
@@ -2059,12 +2207,10 @@ function TasksInner() {
             </MenuItem>
           )}
 
-        {/* Anyone can hide any message for themselves. */}
         <MenuItem onClick={() => deleteMessageById(messageMenu.message, "me")} sx={{ fontSize: 13 }}>
           <Delete sx={{ fontSize: 16, mr: 1 }} /> Delete for me
         </MenuItem>
 
-        {/* Only the sender can wipe it for everyone. */}
         {sameId(messageMenu?.message?.sender, myId) && (
           <MenuItem
             onClick={() => deleteMessageById(messageMenu.message, "everyone")}
@@ -2537,10 +2683,18 @@ function TasksInner() {
   );
 }
 
+/* =========================================================
+   PROTECTED PAGE — TasksInner is wrapped in Suspense because it
+   calls useSearchParams(), which Next.js requires a Suspense
+   boundary for (otherwise the production build fails).
+========================================================= */
+
 export default function TasksPage() {
   return (
     <ProtectedRoute>
-      <TasksInner />
+      <Suspense fallback={null}>
+        <TasksInner />
+      </Suspense>
     </ProtectedRoute>
   );
 }
