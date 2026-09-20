@@ -17,6 +17,8 @@ const pushRoutes = require("./routes/pushRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const taskRoutes = require("./routes/taskRoutes");
 const goalRoutes = require("./routes/goalRoutes");
+const mistakeRoutes = require("./routes/mistakeRoutes");
+const habitRoutes = require("./routes/habitRoutes");
 const noteRoutes = require("./routes/noteRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 const brandSettingsRoutes = require("./routes/brandSettingsRoutes");
@@ -35,6 +37,14 @@ const { startDueDateReminderJob } = require("./jobs/dueDateReminder");
 // reset push notifications. Separate cron from the two above.
 const checklistRoutes = require("./routes/checklistRoutes");
 const startChecklistCron = require("./jobs/checklistCron");
+
+// NEW: Good/Bad Things journal, Random Messages (categorized, per-recipient,
+// frequency-based push notifications), and Shopping/Packing Lists with
+// budget + purchased tracking.
+const goodBadRoutes = require("./routes/goodBadRoutes");
+const randomMessageRoutes = require("./routes/randomMessageRoutes");
+const shoppingRoutes = require("./routes/shoppingRoutes");
+const { startRandomMessageCron } = require("./jobs/randomMessageCron");
 
 const app = express();
 
@@ -161,8 +171,16 @@ app.use("/api/templates", templateRoutes);
 app.use("/api/checklists", checklistRoutes);
 app.use("/api/goals", goalRoutes);
 app.use("/api/notes", noteRoutes);
+app.use("/api/mistakes", mistakeRoutes);
+app.use("/api/habits", habitRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/brand-settings", brandSettingsRoutes);
+
+// NEW: Good/Bad Things journal, Random Messages, Shopping Lists.
+app.use("/api/good-bad", goodBadRoutes);
+app.use("/api/random-messages", randomMessageRoutes);
+app.use("/api/shopping", shoppingRoutes);
+
 /* =========================================================
   ERROR HANDLING
 ========================================================= */
@@ -198,6 +216,10 @@ connectDB()
       // NEW: daily 00:05 job that resets Daily/Weekly checklists and
       // sends due/overdue reminders for all checklist types.
       startChecklistCron();
+
+      // NEW: checks every 5 minutes which random-message preferences
+      // are due (based on their own per-recipient frequency) and sends.
+      startRandomMessageCron();
     });
   })
   .catch((error) => {

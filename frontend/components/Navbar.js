@@ -34,8 +34,12 @@ import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
-
+import TrackChangesRoundedIcon from "@mui/icons-material/TrackChangesRounded";
+import ReportProblemRoundedIcon from "@mui/icons-material/ReportProblemRounded";
 import { usePathname, useRouter } from "next/navigation";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import NotificationsActiveRoundedIcon from "@mui/icons-material/NotificationsActiveRounded";
+import ShoppingCartRoundedIcon from "@mui/icons-material/ShoppingCartRounded";
 import { toast } from "react-toastify";
 
 import { getStoredUser, clearSession } from "../lib/auth";
@@ -152,6 +156,11 @@ export default function Navbar() {
   icon: <EmojiEventsRoundedIcon />,
 },
 {
+  label: "Habits",
+  href: "/habits",
+  icon: <TrackChangesRoundedIcon />,
+},
+{
   label: "Notes",
   href: "/notes",
   icon: <StickyNote2RoundedIcon />,
@@ -159,7 +168,14 @@ export default function Navbar() {
   label: "Appointments",
   href: "/appointments",
   icon: <EventRoundedIcon />,
+},{
+  label: "Mistakes",
+  href: "/mistakes",
+  icon: <ReportProblemRoundedIcon />,
 },
+{ label: "Good & Bad", href: "/good-bad", icon: <AutoAwesomeRoundedIcon /> },
+{ label: "Random Msgs", href: "/random-messages", icon: <NotificationsActiveRoundedIcon /> },
+{ label: "Shopping", href: "/shopping", icon: <ShoppingCartRoundedIcon /> },
   ];
 
   // Owner AND superadmin both manage users now — superadmin needs the

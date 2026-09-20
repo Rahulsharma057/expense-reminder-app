@@ -3,15 +3,15 @@ const mongoose = require("mongoose");
 const milestoneSchema = new mongoose.Schema(
   {
     text: { type: String, required: true, trim: true },
-    status: { type: String, enum: ["Pending", "Done"], default: "Pending" },
-    remarks: { type: String, default: "" }, // e.g. why this step isn't done yet
+    status: { type: String, enum: ["Not Started", "In Progress", "Done"], default: "Not Started" },
+    note: { type: String, default: "" }, // why it's stuck / what's left / how much is done
   },
   { _id: true }
 );
 
 const updateLogSchema = new mongoose.Schema(
   {
-    text: { type: String, required: true, trim: true }, // what was done / why delayed
+    text: { type: String, required: true, trim: true },
     date: { type: Date, default: Date.now },
   },
   { _id: true }
@@ -31,11 +31,10 @@ const goalSchema = new mongoose.Schema(
       default: "Not Started",
     },
 
-    // Used only when there are no milestones — manual progress.
-    progressPercent: { type: Number, default: 0, min: 0, max: 100 },
+    progressPercent: { type: Number, default: 0, min: 0, max: 100 }, // used only when there are no milestones
 
     milestones: [milestoneSchema],
-    updates: [updateLogSchema], // running remarks log — "kya kya kiya"
+    updates: [updateLogSchema],
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },

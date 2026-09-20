@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Box, Container, Paper, Typography, TextField, Button, Stack, MenuItem,
+  Box, Container, Paper, Typography, TextField, Button, Stack,
   Alert, CircularProgress, Avatar, IconButton, ToggleButtonGroup, ToggleButton, Chip,
 } from "@mui/material";
 import AddAPhotoIcon from "@mui/icons-material/AddAPhoto";
@@ -11,8 +11,9 @@ import { toast } from "react-toastify";
 import api from "../../lib/api";
 import VoiceInputButton from "../../components/VoiceInputButton";
 import AttendeesEditor from "../../components/AttendeesEditor";
-import ArrangementsEditor from "../../components/ArrangementsEditor";
+import FoodArrangementsChecklist from "../../components/FoodArrangementsChecklist";
 import ImageLightbox from "../../components/ImageLightbox";
+import ConflictWarning from "../../components/ConflictWarning";
 
 const TYPES = ["Appointment", "Meeting", "Meeting with Food"];
 const MAX_PHOTOS = 5;
@@ -38,11 +39,16 @@ export default function AppointmentForm({ mode = "create", initialData = null, o
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
+  const [conflicts, setConflicts] = useState([]);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const totalPhotoCount = existingPhotos.length + newPhotoFiles.length;
   const lightboxImages = [...existingPhotos.map((p) => ({ url: p.url })), ...newPhotoPreviews.map((url) => ({ url }))];
+
+  const isMeeting = form.type === "Meeting" || form.type === "Meeting with Food";
+  const isMeetingWithFood = form.type === "Meeting with Food";
 
   useEffect(() => {
     if (isEdit && initialData) {
@@ -61,7 +67,25 @@ export default function AppointmentForm({ mode = "create", initialData = null, o
     }
   }, [isEdit, initialData]);
 
+  // Debounced conflict check whenever date/duration changes
+  useEffect(() => {
+    if (!form.dateTime) return;
+    const t = setTimeout(() => {
+      api
+        .get("/appointments/check-conflict", { params: { dateTime: form.dateTime, duration: form.duration, excludeId: isEdit ? initialData?._id : undefined } })
+        .then((res) => setConflicts(res.data.conflicts || []))
+        .catch(() => setConflicts([]));
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.dateTime, form.duration]);
+
   const update = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleTypeChange = (value) => {
+    update("type")(value);
+    if (value !== "Meeting with Food") setArrangements([]); // arrangements only relevant for this type
+  };
 
   const handlePhotosSelected = (files) => {
     const incoming = Array.from(files || []);
@@ -91,15 +115,18 @@ export default function AppointmentForm({ mode = "create", initialData = null, o
       formData.append("arrangements", JSON.stringify(arrangements.filter((a) => a.text?.trim())));
       newPhotoFiles.forEach((file) => formData.append("photos", file));
 
+      let saved;
       if (isEdit) {
         formData.append("removedPhotoIds", JSON.stringify(removedPhotoIds));
-        await api.put(`/appointments/${initialData._id}`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+        const res = await api.put(`/appointments/${initialData._id}`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+        saved = res.data;
         toast.success("Updated.");
       } else {
-        await api.post("/appointments", formData, { headers: { "Content-Type": "multipart/form-data" } });
+        const res = await api.post("/appointments", formData, { headers: { "Content-Type": "multipart/form-data" } });
+        saved = res.data;
         toast.success("Scheduled.");
       }
-      setTimeout(() => onDone?.(), 400);
+      setTimeout(() => onDone?.(saved), 400);
     } catch (err) {
       const message = err?.response?.data?.message || "Could not save.";
       setError(message); toast.error(message);
@@ -119,35 +146,45 @@ export default function AppointmentForm({ mode = "create", initialData = null, o
       <Paper elevation={0} sx={{ p: { xs: 1.75, sm: 3 }, border: "1px solid", borderColor: "divider", borderRadius: { xs: 2.5, sm: 3 }, backgroundColor: "background.paper" }}>
         <Box component="form" onSubmit={handleSubmit}>
           <Stack spacing={2}>
+            {/* TYPE — decides which fields below appear */}
+            <ToggleButtonGroup exclusive fullWidth size="small" value={form.type} onChange={(_e, v) => v && handleTypeChange(v)} sx={{ "& .MuiToggleButton-root": { textTransform: "none", fontWeight: 700, fontSize: 11.5 } }}>
+              {TYPES.map((t) => <ToggleButton key={t} value={t}>{t}</ToggleButton>)}
+            </ToggleButtonGroup>
+
             <TextField
-              label="Title" required fullWidth placeholder="e.g. Client Meeting, Doctor Visit"
+              label="Title" required fullWidth placeholder={form.type === "Appointment" ? "e.g. Doctor Visit" : "e.g. Client Discussion"}
               value={form.title} onChange={(e) => update("title")(e.target.value)}
               InputProps={{ endAdornment: <VoiceInputButton onResult={(t) => update("title")(form.title ? `${form.title} ${t}` : t)} /> }}
             />
 
-            <ToggleButtonGroup exclusive fullWidth size="small" value={form.type} onChange={(_e, v) => v && update("type")(v)} sx={{ "& .MuiToggleButton-root": { textTransform: "none", fontWeight: 700, fontSize: 11.5 } }}>
-              {TYPES.map((t) => <ToggleButton key={t} value={t}>{t}</ToggleButton>)}
-            </ToggleButtonGroup>
-            {form.type === "Meeting with Food" && (
-              <Typography variant="caption" color="text.secondary">Neeche "Arrangements" mein food items add karna na bhoolo.</Typography>
+            {/* Agenda — only for Meeting / Meeting with Food */}
+            {isMeeting && (
+              <TextField
+                label="Agenda / Description" fullWidth multiline minRows={2}
+                value={form.description} onChange={(e) => update("description")(e.target.value)}
+                InputProps={{ endAdornment: <VoiceInputButton onResult={(t) => update("description")(form.description ? `${form.description} ${t}` : t)} /> }}
+              />
             )}
-
-            <TextField
-              label="Agenda / Description (optional)" fullWidth multiline minRows={2}
-              value={form.description} onChange={(e) => update("description")(e.target.value)}
-              InputProps={{ endAdornment: <VoiceInputButton onResult={(t) => update("description")(form.description ? `${form.description} ${t}` : t)} /> }}
-            />
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
               <TextField label="Date & Time" type="datetime-local" required fullWidth value={form.dateTime} onChange={(e) => update("dateTime")(e.target.value)} InputLabelProps={{ shrink: true }} />
               <TextField label="Duration (min)" type="number" fullWidth value={form.duration} onChange={(e) => update("duration")(e.target.value)} />
             </Stack>
 
+            <ConflictWarning conflicts={conflicts} />
+
             <TextField label="Location (optional)" fullWidth placeholder="e.g. Office, Online, Client's place" value={form.location} onChange={(e) => update("location")(e.target.value)} />
 
             <AttendeesEditor attendees={attendees} onChange={setAttendees} />
 
-            <ArrangementsEditor arrangements={arrangements} onChange={setArrangements} />
+            {/* Food & Arrangements — only for Meeting with Food */}
+            {isMeetingWithFood && (
+              <FoodArrangementsChecklist
+                appointmentId={isEdit ? initialData?._id : null}
+                arrangements={arrangements}
+                onChange={setArrangements}
+              />
+            )}
 
             <TextField label="Notes (optional)" fullWidth multiline minRows={2} value={form.notes} onChange={(e) => update("notes")(e.target.value)} />
 

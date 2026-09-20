@@ -303,8 +303,58 @@ const generatePdf = asyncHandler(async (req, res) => {
 
   doc.end();
 });
+// =============================================================
+// UPDATE A SINGLE ARRANGEMENT ITEM — checkbox toggle, saves instantly
+// so items can be tracked/updated independently over time.
+// =============================================================
+const updateArrangementItem = asyncHandler(async (req, res) => {
+  const { id, itemId } = req.params;
+  const { status, cost, text } = req.body;
+  if (!isValidObjectId(id)) return res.status(400).json({ message: `Invalid appointment ID: "${id}"` });
+
+  const appointment = await Appointment.findOne({ _id: id, createdBy: req.user._id });
+  if (!appointment) return res.status(404).json({ message: "Appointment not found." });
+
+  const item = appointment.arrangements.id(itemId);
+  if (!item) return res.status(404).json({ message: "Arrangement item not found." });
+
+  if (status !== undefined) item.status = status;
+  if (cost !== undefined) item.cost = Number(cost);
+  if (text !== undefined) item.text = text.trim();
+
+  await appointment.save();
+  res.json(withComputed(appointment));
+});
+
+// =============================================================
+// CONFLICT CHECK — warn if another appointment overlaps this time slot
+// =============================================================
+const checkConflict = asyncHandler(async (req, res) => {
+  const { dateTime, duration, excludeId } = req.query;
+  if (!dateTime) return res.json({ conflicts: [] });
+
+  const start = new Date(dateTime);
+  const end = new Date(start.getTime() + (Number(duration) || 30) * 60000);
+
+  const filter = {
+    createdBy: req.user._id,
+    status: { $nin: ["Cancelled"] },
+    dateTime: { $lt: end }, // existing appointment starts before this one ends
+  };
+  if (excludeId && isValidObjectId(excludeId)) filter._id = { $ne: excludeId };
+
+  const candidates = await Appointment.find(filter).select("title dateTime duration");
+
+  const conflicts = candidates.filter((c) => {
+    const cEnd = new Date(new Date(c.dateTime).getTime() + (c.duration || 30) * 60000);
+    return cEnd > start; // and ends after this one starts — genuine overlap
+  });
+
+  res.json({ conflicts: conflicts.map((c) => ({ id: c._id, title: c.title, dateTime: c.dateTime, duration: c.duration })) });
+});
 
 module.exports = {
   createAppointment, listAppointments, getAppointment, updateAppointment,
   rescheduleAppointment, updateStatus, deleteAppointment, generatePdf,
+  updateArrangementItem, checkConflict,
 };

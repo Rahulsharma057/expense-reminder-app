@@ -3,21 +3,25 @@
 import { useEffect, useState } from "react";
 import {
   Box, Container, Typography, Stack, TextField, InputAdornment, Button,
-  CircularProgress, Paper, Divider, Chip, Grid, IconButton, Menu, MenuItem,
+  CircularProgress, Paper, Divider, Chip, Grid, IconButton, Menu, ToggleButtonGroup, ToggleButton,
 } from "@mui/material";
 
 import SearchIcon from "@mui/icons-material/Search";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
 import StickyNote2Icon from "@mui/icons-material/StickyNote2";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
+import GridViewIcon from "@mui/icons-material/GridView";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import FolderIcon from "@mui/icons-material/Folder";
 import { toast } from "react-toastify";
 
 import ProtectedRoute from "../../components/ProtectedRoute";
 import Navbar from "../../components/Navbar";
 import NoteCard from "../../components/NoteCard";
+import NoteListRow from "../../components/NoteListRow";
 import NoteEditorDialog from "../../components/NoteEditorDialog";
 import NoteUnlockDialog from "../../components/NoteUnlockDialog";
+import FolderDeleteDialog from "../../components/FolderDeleteDialog";
 import api from "../../lib/api";
 
 function NotesInner() {
@@ -26,7 +30,9 @@ function NotesInner() {
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
-  const [activeFolder, setActiveFolder] = useState(""); // "" = all, "unfiled" = unfiled
+  const [activeFolderId, setActiveFolderId] = useState(""); // "" = all, "unfiled" = unfiled
+
+  const [view, setView] = useState("grid");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
@@ -38,6 +44,8 @@ function NotesInner() {
   const [newFolderName, setNewFolderName] = useState("");
   const [addingFolder, setAddingFolder] = useState(false);
 
+  const [folderToDelete, setFolderToDelete] = useState(null);
+
   const loadFolders = () => {
     api.get("/notes/folders").then((res) => setFolders(res.data || [])).catch(() => {});
   };
@@ -45,7 +53,7 @@ function NotesInner() {
   const loadNotes = () => {
     setLoading(true);
     api
-      .get("/notes", { params: { search, folder: activeFolder || undefined } })
+      .get("/notes", { params: { search, folder: activeFolderId || undefined } })
       .then((res) => setNotes(res.data || []))
       .finally(() => setLoading(false));
   };
@@ -55,7 +63,9 @@ function NotesInner() {
     const t = setTimeout(loadNotes, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, activeFolder]);
+  }, [search, activeFolderId]);
+
+  const activeFolder = folders.find((f) => f._id === activeFolderId);
 
   const handleNoteClick = (note) => {
     if (note.isLocked) {
@@ -105,17 +115,11 @@ function NotesInner() {
     }
   };
 
-  const handleDeleteFolder = async (folderId) => {
-    if (!window.confirm("Delete this folder? Notes inside it will become unfiled.")) return;
-    try {
-      await api.delete(`/notes/folders/${folderId}`);
-      if (activeFolder === folderId) setActiveFolder("");
-      loadFolders();
-      loadNotes();
-      toast.success("Folder deleted.");
-    } catch {
-      toast.error("Could not delete folder.");
-    }
+  const handleFolderDeleted = (folderId) => {
+    setFolderToDelete(null);
+    if (activeFolderId === folderId) setActiveFolderId("");
+    loadFolders();
+    loadNotes();
   };
 
   return (
@@ -146,24 +150,30 @@ function NotesInner() {
           </Button>
         </Stack>
 
-        <TextField
-          fullWidth size="small" placeholder="Search notes..."
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          sx={{ mb: 1.5 }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 20, color: "text.secondary" }} /></InputAdornment> }}
-        />
+        <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+          <TextField
+            fullWidth size="small" placeholder="Search notes..."
+            value={search} onChange={(e) => setSearch(e.target.value)}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 20, color: "text.secondary" }} /></InputAdornment> }}
+          />
+          <ToggleButtonGroup exclusive size="small" value={view} onChange={(_e, v) => v && setView(v)}>
+            <ToggleButton value="grid"><GridViewIcon fontSize="small" /></ToggleButton>
+            <ToggleButton value="list"><ViewListIcon fontSize="small" /></ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
 
         {/* FOLDER CHIPS */}
-        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 2 }}>
-          <Chip label="All" onClick={() => setActiveFolder("")} sx={{ fontWeight: 700, bgcolor: activeFolder === "" ? "primary.main" : "transparent", color: activeFolder === "" ? "#fff" : "text.secondary", border: "1px solid", borderColor: "divider" }} />
-          <Chip label="Unfiled" onClick={() => setActiveFolder("unfiled")} sx={{ fontWeight: 700, bgcolor: activeFolder === "unfiled" ? "primary.main" : "transparent", color: activeFolder === "unfiled" ? "#fff" : "text.secondary", border: "1px solid", borderColor: "divider" }} />
+        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 1 }}>
+          <Chip label="All" onClick={() => setActiveFolderId("")} sx={{ fontWeight: 700, bgcolor: activeFolderId === "" ? "primary.main" : "transparent", color: activeFolderId === "" ? "#fff" : "text.secondary", border: "1px solid", borderColor: "divider" }} />
+          <Chip label="Unfiled" onClick={() => setActiveFolderId("unfiled")} sx={{ fontWeight: 700, bgcolor: activeFolderId === "unfiled" ? "primary.main" : "transparent", color: activeFolderId === "unfiled" ? "#fff" : "text.secondary", border: "1px solid", borderColor: "divider" }} />
           {folders.map((f) => (
             <Chip
               key={f._id}
+              icon={<FolderIcon sx={{ fontSize: 15 }} />}
               label={f.name}
-              onClick={() => setActiveFolder(f._id)}
-              onDelete={() => handleDeleteFolder(f._id)}
-              sx={{ fontWeight: 700, bgcolor: activeFolder === f._id ? f.color : "transparent", color: activeFolder === f._id ? "#fff" : "text.secondary", border: "1px solid", borderColor: activeFolder === f._id ? f.color : "divider" }}
+              onClick={() => setActiveFolderId(f._id)}
+              onDelete={() => setFolderToDelete(f)}
+              sx={{ fontWeight: 700, bgcolor: activeFolderId === f._id ? f.color : "transparent", color: activeFolderId === f._id ? "#fff" : "text.secondary", border: "1px solid", borderColor: activeFolderId === f._id ? f.color : "divider" }}
             />
           ))}
           <IconButton size="small" onClick={(e) => setFolderMenuAnchor(e.currentTarget)} sx={{ border: "1px solid", borderColor: "divider" }}>
@@ -176,6 +186,15 @@ function NotesInner() {
             </Box>
           </Menu>
         </Stack>
+
+        {/* FOLDER HEADER — shown when a specific folder is open */}
+        {activeFolder && (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5, px: 0.25 }}>
+            <FolderIcon sx={{ fontSize: 18, color: activeFolder.color }} />
+            <Typography variant="body2" fontWeight={700}>{activeFolder.name}</Typography>
+            <Typography variant="caption" color="text.secondary">— {notes.length} note(s)</Typography>
+          </Stack>
+        )}
 
         {loading ? (
           <Paper elevation={0} sx={{ minHeight: 260, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: 3, border: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
@@ -190,7 +209,7 @@ function NotesInner() {
               Add a note
             </Button>
           </Paper>
-        ) : (
+        ) : view === "grid" ? (
           <Grid container spacing={{ xs: 1, sm: 1.25 }}>
             {notes.map((note) => (
               <Grid item xs={6} sm={4} md={3} key={note._id}>
@@ -198,6 +217,12 @@ function NotesInner() {
               </Grid>
             ))}
           </Grid>
+        ) : (
+          <Stack spacing={1}>
+            {notes.map((note) => (
+              <NoteListRow key={note._id} note={note} onClick={() => handleNoteClick(note)} />
+            ))}
+          </Stack>
         )}
 
         <Divider sx={{ mt: 3, opacity: 0.3 }} />
@@ -220,6 +245,13 @@ function NotesInner() {
         noteId={unlockNoteId}
         onClose={() => setUnlockOpen(false)}
         onUnlocked={handleUnlocked}
+      />
+
+      <FolderDeleteDialog
+        open={!!folderToDelete}
+        folder={folderToDelete}
+        onClose={() => setFolderToDelete(null)}
+        onDeleted={handleFolderDeleted}
       />
     </Box>
   );

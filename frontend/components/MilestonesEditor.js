@@ -22,7 +22,7 @@ export default function MilestonesEditor({ milestones, onChange }) {
       </Stack>
 
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Milestones daaloge toh progress % auto-calculate hoga. Nahi daaloge toh neeche manual % set kar sakte ho.
+        Add milestones to auto-calculate progress %. If you skip this, you can set progress manually below.
       </Typography>
 
       <Stack spacing={1}>

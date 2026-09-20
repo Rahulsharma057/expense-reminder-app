@@ -16,6 +16,7 @@ import api from "../lib/api";
 import { downloadBlobResponse } from "../lib/download";
 import ImageLightbox from "./ImageLightbox";
 import RescheduleDialog from "./RescheduleDialog";
+import FoodArrangementsChecklist from "./FoodArrangementsChecklist";
 
 const STATUS_COLORS = { Scheduled: "#60A5FA", Rescheduled: "#FBBF24", Completed: "#4ADE80", Cancelled: "#F87171" };
 const TYPE_COLORS = { Appointment: "#94a3b8", Meeting: "#60A5FA", "Meeting with Food": "#FB923C" };
@@ -60,7 +61,7 @@ export default function AppointmentDetailDialog({ open, appointment, onClose, on
     try {
       const res = await api.get(`/appointments/${appointment._id}/pdf`, { responseType: "blob" });
       downloadBlobResponse(res, `${appointment.title}.pdf`);
-      toast.info("PDF download ho gayi — WhatsApp/Email mein manually attach kar dena.");
+      toast.info("PDF downloaded — attach it manually in WhatsApp/Email.");
     } catch {
       toast.error("Could not generate PDF.");
     } finally {
@@ -124,19 +125,12 @@ export default function AppointmentDetailDialog({ open, appointment, onClose, on
           {appointment.arrangements?.length > 0 && (
             <>
               <Divider sx={{ my: 1.2 }} />
-              <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.6 }}>ARRANGEMENTS</Typography>
-              <Stack spacing={0.6}>
-                {appointment.arrangements.map((a, i) => (
-                  <Stack key={i} direction="row" justifyContent="space-between">
-                    <Typography variant="body2">{a.text} <Typography component="span" variant="caption" color="text.secondary">({a.category}, {a.status})</Typography></Typography>
-                    <Typography variant="body2" fontWeight={700}>₹{Number(a.cost).toLocaleString("en-IN")}</Typography>
-                  </Stack>
-                ))}
-                <Stack direction="row" justifyContent="space-between" sx={{ pt: 0.4, borderTop: "1px solid", borderColor: "divider" }}>
-                  <Typography variant="body2" fontWeight={800}>Total</Typography>
-                  <Typography variant="body2" fontWeight={800} color="primary.light">₹{Number(appointment.arrangementTotal || 0).toLocaleString("en-IN")}</Typography>
-                </Stack>
-              </Stack>
+              <FoodArrangementsChecklist
+                appointmentId={appointment._id}
+                arrangements={appointment.arrangements}
+                onChange={() => {}}
+                onSavedRemote={(updated) => onUpdated?.(updated)}
+              />
             </>
           )}
 

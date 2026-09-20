@@ -118,7 +118,7 @@ export default function NoteEditorDialog({ open, note, folders, onClose, onSaved
         </Stack>
 
         <TextField
-          variant="standard" placeholder="Note likho..." fullWidth multiline minRows={5}
+          variant="standard" placeholder="Write your note..." fullWidth multiline minRows={5}
           value={content} onChange={(e) => setContent(e.target.value)}
           InputProps={{ disableUnderline: true, sx: { fontSize: 14 } }}
         />

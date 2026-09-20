@@ -4,13 +4,21 @@ const { asyncHandler } = require("../middleware/errorHandler");
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+const MILESTONE_WEIGHT = { "Not Started": 0, "In Progress": 0.5, Done: 1 };
+
 const computeProgress = (goal) => {
   if (goal.milestones?.length) {
     const total = goal.milestones.length;
     const done = goal.milestones.filter((m) => m.status === "Done").length;
-    return { total, done, remaining: total - done, percent: Math.round((done / total) * 100) };
+    const inProgress = goal.milestones.filter((m) => m.status === "In Progress").length;
+    const score = goal.milestones.reduce((sum, m) => sum + (MILESTONE_WEIGHT[m.status] || 0), 0);
+    return {
+      total, done, inProgress,
+      notStarted: total - done - inProgress,
+      percent: Math.round((score / total) * 100),
+    };
   }
-  return { total: 0, done: 0, remaining: 0, percent: goal.progressPercent || 0 };
+  return { total: 0, done: 0, inProgress: 0, notStarted: 0, percent: goal.progressPercent || 0 };
 };
 
 const computeIsDelayed = (goal) =>
@@ -118,9 +126,9 @@ const updateGoal = asyncHandler(async (req, res) => {
           if (!text) return null;
           if (m._id && existingById.has(m._id)) {
             const existing = existingById.get(m._id);
-            return { _id: existing._id, text, status: existing.status, remarks: existing.remarks };
+            return { _id: existing._id, text, status: existing.status, note: existing.note };
           }
-          return { text, status: "Pending", remarks: "" };
+          return { text, status: "Not Started", note: "" };
         })
         .filter(Boolean);
     } catch { /* ignore malformed */ }
@@ -132,7 +140,7 @@ const updateGoal = asyncHandler(async (req, res) => {
 
 const updateMilestone = asyncHandler(async (req, res) => {
   const { id, milestoneId } = req.params;
-  const { status, remarks } = req.body;
+  const { status, note } = req.body;
   if (!isValidObjectId(id)) return res.status(400).json({ message: `Invalid goal ID: "${id}"` });
 
   const goal = await Goal.findOne({ _id: id, createdBy: req.user._id });
@@ -142,14 +150,14 @@ const updateMilestone = asyncHandler(async (req, res) => {
   if (!milestone) return res.status(404).json({ message: "Milestone not found." });
 
   if (status !== undefined) milestone.status = status;
-  if (remarks !== undefined) milestone.remarks = remarks;
+  if (note !== undefined) milestone.note = note;
 
-  // Auto-progress the goal's own status based on milestone completion
   const total = goal.milestones.length;
   const done = goal.milestones.filter((m) => m.status === "Done").length;
+  const started = goal.milestones.filter((m) => m.status !== "Not Started").length;
   if (total > 0) {
     if (done === total) goal.status = "Achieved";
-    else if (done > 0 && goal.status === "Not Started") goal.status = "In Progress";
+    else if (started > 0 && goal.status === "Not Started") goal.status = "In Progress";
   }
 
   await goal.save();

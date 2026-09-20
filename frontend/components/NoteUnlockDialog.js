@@ -30,7 +30,7 @@ export default function NoteUnlockDialog({ open, noteId, onClose, onUnlocked }) 
       </DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Yeh note password se protected hai. Dekhne ke liye password daalo.
+       "This note is password protected. Enter the password to view it."
         </Typography>
         <TextField
           type="password" fullWidth autoFocus label="Password"

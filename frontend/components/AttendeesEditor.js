@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Box, Stack, TextField, Autocomplete, Chip, Typography, Button, IconButton } from "@mui/material";
+import { Box, Stack, TextField, Autocomplete, Chip, Typography, IconButton } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import CloseIcon from "@mui/icons-material/Close";
 import api from "../lib/api";
 
 export default function AttendeesEditor({ attendees, onChange }) {
@@ -35,7 +34,7 @@ export default function AttendeesEditor({ attendees, onChange }) {
   return (
     <Box>
       <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 0.8 }}>
-        WITH WHOM (ATTENDEES)
+        ATTENDEES
       </Typography>
 
       <Autocomplete
@@ -50,7 +49,7 @@ export default function AttendeesEditor({ attendees, onChange }) {
       />
 
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.2, mb: 0.6 }}>
-        Bahar se koi aaya hai? Yahan add karo:
+        Is someone external joining? Add them here:
       </Typography>
       <Stack direction="row" spacing={1}>
         <TextField size="small" placeholder="Name" value={extName} onChange={(e) => setExtName(e.target.value)} sx={{ flex: 1.2 }} />
