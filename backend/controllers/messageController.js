@@ -74,6 +74,10 @@ const notifyUsers = async ({
 
   if (!uniqueRecipients.length) return;
 
+  // ========================================================
+  // DATABASE NOTIFICATION
+  // ========================================================
+
   await Promise.all(
     uniqueRecipients.map((recipient) =>
       createNotification({
@@ -86,6 +90,10 @@ const notifyUsers = async ({
     )
   );
 
+  // ========================================================
+  // SOCKET NOTIFICATION
+  // ========================================================
+
   emitToUsers(uniqueRecipients, "notification", {
     type,
     title,
@@ -95,28 +103,30 @@ const notifyUsers = async ({
   });
 
   // ========================================================
-  // GET SENDER PROFILE PHOTO FOR PUSH NOTIFICATION
+  // GET SENDER PROFILE
   // ========================================================
 
   let avatarUrl = "";
+  let senderName = "";
 
   if (senderId) {
-  try {
-    const sender = await User.findById(senderId)
-      .select("name avatarUrl")
-      .lean();
+    try {
+      const sender = await User.findById(senderId)
+        .select("name avatarUrl")
+        .lean();
 
-    avatarUrl = sender?.avatarUrl || "";
+      avatarUrl = sender?.avatarUrl || "";
+      senderName = sender?.name || "";
 
-    console.log("[push] SENDER:", sender?.name);
-    console.log("[push] AVATAR:", avatarUrl);
-  } catch (err) {
-    console.error(
-      "[push] could not load sender avatar:",
-      err.message
-    );
+      console.log("[push] SENDER:", senderName);
+      console.log("[push] AVATAR:", avatarUrl);
+    } catch (err) {
+      console.error(
+        "[push] could not load sender:",
+        err.message
+      );
+    }
   }
-}
 
   // ========================================================
   // PUSH NOTIFICATION
@@ -125,14 +135,25 @@ const notifyUsers = async ({
   sendPushToUsers(uniqueRecipients, {
     title,
     body: message,
+
+    // Open the exact task/chat
     url: `/tasks?open=${task}`,
-    tag: `task-${task}`,
+
+    // Same task = same notification group
+    tag: `chat-${task}`,
+
+    // Sender profile photo
     avatarUrl,
+
+    // Extra information for Service Worker
+    notificationType: "chat",
+    taskId: String(task),
+    senderId: senderId ? String(senderId) : "",
+    senderName,
   }).catch((err) =>
     console.error("[push] send failed:", err.message)
   );
 };
-
 const loadAuthorizedTask = async (id, req, res, select) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     res.status(400).json({ message: "Invalid task ID" });
@@ -340,14 +361,20 @@ const createAndBroadcastMessage = async ({ req, task, doc }) => {
 
   emitToTask(task._id, "newMessage", { taskId: String(task._id), message: payload });
 
-  await notifyUsers({
-    recipients: getChatMembers(task),
-    senderId: req.user._id,
-    type: "NEW_MESSAGE",
-    title: task.mode === "GROUP" ? "New Group Task Message" : "New Task Message",
-    message: `${req.user.name}: ${buildPreviewText(created.type, created.text).slice(0, 80)}`,
-    task: task._id,
-  });
+await notifyUsers({
+  recipients: getChatMembers(task),
+  senderId: req.user._id,
+  type: "NEW_MESSAGE",
+  title:
+    task.mode === "GROUP"
+      ? "New Group Task Message"
+      : "New Task Message",
+  message: buildPreviewText(
+    created.type,
+    created.text
+  ).slice(0, 80),
+  task: task._id,
+});
 
   return payload;
 };

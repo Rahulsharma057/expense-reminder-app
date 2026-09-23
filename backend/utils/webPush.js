@@ -50,10 +50,21 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 // SEND PUSH TO ONE USER
 // ==========================================================
 // avatarUrl = profile photo of the user who triggered the notification
-
 const sendPushToUser = async (
   userId,
-  { title, body, url, tag, avatarUrl }
+  {
+    title,
+    body,
+    url,
+    tag,
+    avatarUrl,
+    notificationType,
+    taskId,
+    senderId,
+    senderName,
+    messageCount,
+    messages,
+  }
 ) => {
   if (!configured || !userId) return;
 
@@ -63,15 +74,23 @@ const sendPushToUser = async (
 
   if (!subscriptions.length) return;
 
-  const payload = JSON.stringify({
-    title: title || "New notification",
-    body: body || "",
-    url: url || "/tasks",
-    tag: tag || "task-update",
+const payload = JSON.stringify({
+  title: title || "New notification",
+  body: body || "",
+  url: url || "/tasks",
+  tag: tag || "task-update",
 
-    // Sender's profile photo
-    avatarUrl: avatarUrl || "",
-  });
+  // Sender's profile photo
+  avatarUrl: avatarUrl || "",
+
+  // Notification metadata
+  notificationType: notificationType || "general",
+  taskId: taskId || "",
+  senderId: senderId || "",
+  senderName: senderName || "",
+  messageCount: Number(messageCount) || 0,
+  messages: Array.isArray(messages) ? messages : [],
+});
 
   await Promise.all(
     subscriptions.map(async (sub) => {

@@ -166,7 +166,7 @@ const getUserName = (user) => {
 const getInitial = (user) =>
   getUserName(user).trim().charAt(0).toUpperCase() || "U";
 
-// NEW: profile photo, if the user has one — MUI's Avatar falls back
+// NEW: profile photo, if the const messageInputRef = useRef(null); has one — MUI's Avatar falls back
 // to its children (the initial letter) automatically if src is falsy
 // or the image fails to load, so this is safe to pass through as-is.
 const getUserAvatar = (user) => {
@@ -584,6 +584,7 @@ function TasksInner() {
   const searchParams = useSearchParams();
 
   const fileInputRef = useRef(null);
+  const messageInputRef = useRef(null);
   const chatBottomRef = useRef(null);
   const chatScrollRef = useRef(null);
   const loadMoreSentinelRef = useRef(null);
@@ -895,30 +896,38 @@ function TasksInner() {
      resolves it once the task list has loaded.
   ======================================================= */
 
-  useEffect(() => {
-    const openId = searchParams.get("open");
-    if (!openId || loading || autoOpenedFromUrlRef.current) return;
+useEffect(() => {
+  const openId = searchParams.get("open");
+  const shouldReply = searchParams.get("reply") === "1";
 
-    autoOpenedFromUrlRef.current = true;
+  if (!openId || loading || autoOpenedFromUrlRef.current) return;
 
-    const existing = tasks.find((task) => task._id === openId);
+  autoOpenedFromUrlRef.current = true;
 
-    if (existing) {
-      openTask(existing);
-    } else {
-      // Not in "my tasks" preview yet (rare — e.g. very first load
-      // race) — fetch it directly by id instead of giving up.
-      api
-        .get(`/tasks/${openId}`)
-        .then((res) => openTask(res.data))
-        .catch(() => toast.error("Could not open that task"));
+  const openAndMaybeReply = async (task) => {
+    await openTask(task);
+
+    if (shouldReply) {
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 300);
     }
+  };
 
-    // Clean the URL so a refresh or the back button doesn't try to
-    // reopen the same chat again.
-    router.replace("/tasks");
-  }, [searchParams, loading, tasks, openTask, router]);
+  const existing = tasks.find((task) => task._id === openId);
 
+  if (existing) {
+    openAndMaybeReply(existing);
+  } else {
+    api
+      .get(`/tasks/${openId}`)
+      .then((res) => openAndMaybeReply(res.data))
+      .catch(() => toast.error("Could not open that task"));
+  }
+
+  // URL clean kar do
+  router.replace("/tasks");
+}, [searchParams, loading, tasks, openTask, router]);
   /* =======================================================
      REALTIME — user room
   ======================================================= */
@@ -3037,6 +3046,7 @@ function TasksInner() {
 
                   <TextField
                     fullWidth
+                      inputRef={messageInputRef}
                     multiline
                     maxRows={4}
                     value={messageText}

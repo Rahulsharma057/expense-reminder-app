@@ -17,17 +17,22 @@ const toId = (value) => {
 };
 
 const isSameId = (a, b) => toId(a) && toId(a) === toId(b);
-const isSuperAdmin = (role) => String(role || "").toLowerCase() === "superadmin";
+const isSuperAdmin = (role) =>
+  String(role || "").toLowerCase() === "superadmin";
 
 const getTaskParticipants = (task) => {
   if (task.mode === "GROUP") {
-    return Array.isArray(task.participants) ? task.participants.filter(Boolean).map(toId) : [];
+    return Array.isArray(task.participants)
+      ? task.participants.filter(Boolean).map(toId)
+      : [];
   }
   return task.assignedTo ? [toId(task.assignedTo)] : [];
 };
 
 const getChatMembers = (task) => [
-  ...new Set([toId(task.assignedBy), ...getTaskParticipants(task)].filter(Boolean)),
+  ...new Set(
+    [toId(task.assignedBy), ...getTaskParticipants(task)].filter(Boolean),
+  ),
 ];
 
 const isTaskAssigner = (task, userId) => isSameId(task.assignedBy, userId);
@@ -60,7 +65,9 @@ const emitToUser = (userId, event, payload) => {
 const emitToUsers = (userIds, event, payload) => {
   const io = getIO();
   if (!io) return;
-  [...new Set((userIds || []).filter(Boolean).map(toId))].forEach((id) => io.to(id).emit(event, payload));
+  [...new Set((userIds || []).filter(Boolean).map(toId))].forEach((id) =>
+    io.to(id).emit(event, payload),
+  );
 };
 
 const notifyUsers = async ({
@@ -77,11 +84,15 @@ const notifyUsers = async ({
         .filter(Boolean)
         .map(toId)
         .filter(Boolean)
-        .filter((id) => id !== String(senderId))
+        .filter((id) => id !== String(senderId)),
     ),
   ];
 
   if (!uniqueRecipients.length) return;
+
+  // ========================================================
+  // DATABASE NOTIFICATION
+  // ========================================================
 
   await Promise.all(
     uniqueRecipients.map((recipient) =>
@@ -91,9 +102,13 @@ const notifyUsers = async ({
         title,
         message,
         task,
-      })
-    )
+      }),
+    ),
   );
+
+  // ========================================================
+  // SOCKET NOTIFICATION
+  // ========================================================
 
   emitToUsers(uniqueRecipients, "notification", {
     type,
@@ -103,8 +118,12 @@ const notifyUsers = async ({
     createdAt: new Date(),
   });
 
-  // Get sender's profile photo for browser push notification
+  // ========================================================
+  // GET SENDER PROFILE
+  // ========================================================
+
   let avatarUrl = "";
+  let senderName = "";
 
   if (senderId) {
     try {
@@ -113,18 +132,41 @@ const notifyUsers = async ({
         .lean();
 
       avatarUrl = sender?.avatarUrl || "";
+      senderName = sender?.name || "";
+
+      console.log("[push] SENDER:", senderName);
+      console.log("[push] AVATAR:", avatarUrl);
     } catch (err) {
-      console.error("[push] could not load sender avatar:", err.message);
+      console.error(
+        "[push] could not load sender profile:",
+        err.message,
+      );
     }
   }
+
+  // ========================================================
+  // PUSH NOTIFICATION
+  // ========================================================
 
   sendPushToUsers(uniqueRecipients, {
     title,
     body: message,
     url: `/tasks?open=${task}`,
+
+    // Same task notification group
     tag: `task-${task}`,
+
+    // Sender profile photo
     avatarUrl,
-  }).catch((err) => console.error("[push] send failed:", err.message));
+
+    // Extra metadata for service-worker
+    notificationType: "task",
+    taskId: String(task),
+    senderId: senderId ? String(senderId) : "",
+    senderName,
+  }).catch((err) =>
+    console.error("[push] send failed:", err.message),
+  );
 };
 // ==========================================================
 // RECURRENCE (unchanged logic, trimmed comments)
@@ -153,23 +195,38 @@ const computeNextDueDate = (currentDueDate, frequency) => {
 const toDateInputString = (date) => date.toISOString().slice(0, 10);
 
 const normalizeRecurrence = (recurrence) => {
-  if (!recurrence || !recurrence.enabled || !["daily", "weekly", "monthly"].includes(recurrence.frequency)) {
+  if (
+    !recurrence ||
+    !recurrence.enabled ||
+    !["daily", "weekly", "monthly"].includes(recurrence.frequency)
+  ) {
     return { enabled: false, frequency: null };
   }
   return { enabled: true, frequency: recurrence.frequency };
 };
 
 const normalizeChecklistRecurrence = (value) => {
-  if (!value || !value.enabled || !["daily", "weekly", "monthly"].includes(value.frequency)) {
+  if (
+    !value ||
+    !value.enabled ||
+    !["daily", "weekly", "monthly"].includes(value.frequency)
+  ) {
     return { enabled: false, frequency: null, lastResetAt: null };
   }
   return { enabled: true, frequency: value.frequency, lastResetAt: new Date() };
 };
 
 const spawnNextRecurrence = async (completedTask) => {
-  if (!completedTask?.recurrence?.enabled || !completedTask.recurrence.frequency) return null;
+  if (
+    !completedTask?.recurrence?.enabled ||
+    !completedTask.recurrence.frequency
+  )
+    return null;
 
-  const nextDue = computeNextDueDate(completedTask.dueDate, completedTask.recurrence.frequency);
+  const nextDue = computeNextDueDate(
+    completedTask.dueDate,
+    completedTask.recurrence.frequency,
+  );
   if (!nextDue) return null;
 
   const nextTask = await Task.create({
@@ -256,10 +313,11 @@ const maybeResetChecklist = async (task) => {
         "checklist.$[].doneAt": null,
         "checklistRecurrence.lastResetAt": new Date(),
       },
-    }
+    },
   );
 
-  if (anyDone) emitToTask(task._id, "checklistReset", { taskId: String(task._id) });
+  if (anyDone)
+    emitToTask(task._id, "checklistReset", { taskId: String(task._id) });
 };
 
 // ==========================================================
@@ -272,12 +330,21 @@ const maybeResetChecklist = async (task) => {
 const createTask = async (req, res) => {
   try {
     let {
-      title, description, assignedTo, assignedToList, dueDate,
-      mode = "INDIVIDUAL", recurrence, checklist, checklistRecurrence,
-      priority, templateId,
+      title,
+      description,
+      assignedTo,
+      assignedToList,
+      dueDate,
+      mode = "INDIVIDUAL",
+      recurrence,
+      checklist,
+      checklistRecurrence,
+      priority,
+      templateId,
     } = req.body;
 
-    if (!req.user?._id) return res.status(401).json({ message: "Authentication required" });
+    if (!req.user?._id)
+      return res.status(401).json({ message: "Authentication required" });
 
     if (templateId) {
       if (!mongoose.Types.ObjectId.isValid(templateId)) {
@@ -294,18 +361,23 @@ const createTask = async (req, res) => {
         priority = priority || template.priority;
         checklist = checklist || template.checklist;
         recurrence = recurrence || template.recurrence;
-        checklistRecurrence = checklistRecurrence || template.checklistRecurrence;
+        checklistRecurrence =
+          checklistRecurrence || template.checklistRecurrence;
       }
     }
 
-    if (!title?.trim()) return res.status(400).json({ message: "Task title is required" });
+    if (!title?.trim())
+      return res.status(400).json({ message: "Task title is required" });
     if (!["INDIVIDUAL", "SEPARATE", "GROUP"].includes(mode)) {
       return res.status(400).json({ message: "Invalid task mode" });
     }
 
-    const safePriority = ["low", "medium", "high"].includes(priority) ? priority : "medium";
+    const safePriority = ["low", "medium", "high"].includes(priority)
+      ? priority
+      : "medium";
     const safeRecurrence = normalizeRecurrence(recurrence);
-    const safeChecklistRecurrence = normalizeChecklistRecurrence(checklistRecurrence);
+    const safeChecklistRecurrence =
+      normalizeChecklistRecurrence(checklistRecurrence);
 
     const safeChecklist = Array.isArray(checklist)
       ? checklist
@@ -313,7 +385,8 @@ const createTask = async (req, res) => {
             text: String(item?.text || "").trim(),
             order: index,
             assignedTo:
-              item?.assignedTo && mongoose.Types.ObjectId.isValid(item.assignedTo)
+              item?.assignedTo &&
+              mongoose.Types.ObjectId.isValid(item.assignedTo)
                 ? item.assignedTo
                 : null,
             assignedToName: item?.assignedToName || "",
@@ -337,12 +410,18 @@ const createTask = async (req, res) => {
     // ---------------- INDIVIDUAL ----------------
 
     if (mode === "INDIVIDUAL") {
-      if (!assignedTo) return res.status(400).json({ message: "Please select a user" });
+      if (!assignedTo)
+        return res.status(400).json({ message: "Please select a user" });
       if (!mongoose.Types.ObjectId.isValid(assignedTo)) {
         return res.status(400).json({ message: "Invalid user" });
       }
 
-      const task = await Task.create({ ...base, mode: "INDIVIDUAL", assignedTo, participants: [] });
+      const task = await Task.create({
+        ...base,
+        mode: "INDIVIDUAL",
+        assignedTo,
+        participants: [],
+      });
 
       const populated = await task.populate([
         { path: "assignedTo", select: "name email role avatarUrl" },
@@ -370,13 +449,24 @@ const createTask = async (req, res) => {
         : [];
 
       if (targets.length < 2) {
-        return res.status(400).json({ message: "Select at least two users for separate assignment" });
+        return res
+          .status(400)
+          .json({
+            message: "Select at least two users for separate assignment",
+          });
       }
       if (targets.some((tid) => !mongoose.Types.ObjectId.isValid(tid))) {
-        return res.status(400).json({ message: "One or more user IDs are invalid" });
+        return res
+          .status(400)
+          .json({ message: "One or more user IDs are invalid" });
       }
 
-      const docs = targets.map((userId) => ({ ...base, mode: "SEPARATE", assignedTo: userId, participants: [] }));
+      const docs = targets.map((userId) => ({
+        ...base,
+        mode: "SEPARATE",
+        assignedTo: userId,
+        participants: [],
+      }));
       const createdTasks = await Task.insertMany(docs);
 
       await Promise.all(
@@ -387,18 +477,28 @@ const createTask = async (req, res) => {
             title: "New Task Assigned",
             message: `You have been assigned a new task: "${task.title}"`,
             task: task._id,
-          })
-        )
+          }),
+        ),
       );
 
-      const populatedTasks = await Task.find({ _id: { $in: createdTasks.map((t) => t._id) } })
+      const populatedTasks = await Task.find({
+        _id: { $in: createdTasks.map((t) => t._id) },
+      })
         .populate("assignedTo", "name email role avatarUrl")
         .populate("assignedBy", "name email role avatarUrl")
         .sort({ createdAt: -1 });
 
-      populatedTasks.forEach((task) => emitToUser(task.assignedTo?._id || task.assignedTo, "newTask", task));
+      populatedTasks.forEach((task) =>
+        emitToUser(task.assignedTo?._id || task.assignedTo, "newTask", task),
+      );
 
-      return res.status(201).json({ mode: "SEPARATE", count: populatedTasks.length, tasks: populatedTasks });
+      return res
+        .status(201)
+        .json({
+          mode: "SEPARATE",
+          count: populatedTasks.length,
+          tasks: populatedTasks,
+        });
     }
 
     // ---------------- GROUP ----------------
@@ -408,13 +508,22 @@ const createTask = async (req, res) => {
       : [];
 
     if (participants.length < 2) {
-      return res.status(400).json({ message: "Select at least two users for a group task" });
+      return res
+        .status(400)
+        .json({ message: "Select at least two users for a group task" });
     }
     if (participants.some((pid) => !mongoose.Types.ObjectId.isValid(pid))) {
-      return res.status(400).json({ message: "One or more participant IDs are invalid" });
+      return res
+        .status(400)
+        .json({ message: "One or more participant IDs are invalid" });
     }
 
-    const task = await Task.create({ ...base, mode: "GROUP", assignedTo: null, participants });
+    const task = await Task.create({
+      ...base,
+      mode: "GROUP",
+      assignedTo: null,
+      participants,
+    });
 
     const populated = await task.populate([
       { path: "participants", select: "name email role avatarUrl" },
@@ -446,14 +555,19 @@ const createTask = async (req, res) => {
 
 const getMyTasks = async (req, res) => {
   try {
-    if (!req.user?._id) return res.status(401).json({ message: "Authentication required" });
+    if (!req.user?._id)
+      return res.status(401).json({ message: "Authentication required" });
 
     const userId = req.user._id;
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Number(req.query.limit) || 30, 100);
 
     const filter = {
-      $or: [{ assignedTo: userId }, { participants: userId }, { assignedBy: userId }],
+      $or: [
+        { assignedTo: userId },
+        { participants: userId },
+        { assignedBy: userId },
+      ],
     };
 
     if (req.query.status) filter.status = req.query.status;
@@ -493,7 +607,7 @@ const getMyTasks = async (req, res) => {
       : [];
 
     const unreadByTask = new Map(
-      unreadRows.map((row) => [String(row._id), row.count])
+      unreadRows.map((row) => [String(row._id), row.count]),
     );
 
     const withPinned = tasks.map((task) => ({
@@ -523,7 +637,9 @@ const getMyTasks = async (req, res) => {
 const getAllTasks = async (req, res) => {
   try {
     if (!isSuperAdmin(req.user?.role)) {
-      return res.status(403).json({ message: "Only superadmin can view all tasks" });
+      return res
+        .status(403)
+        .json({ message: "Only superadmin can view all tasks" });
     }
 
     const page = Math.max(Number(req.query.page) || 1, 1);
@@ -541,7 +657,13 @@ const getAllTasks = async (req, res) => {
         .lean(),
     ]);
 
-    return res.json({ tasks, page, limit, total, hasMore: page * limit < total });
+    return res.json({
+      tasks,
+      page,
+      limit,
+      total,
+      hasMore: page * limit < total,
+    });
   } catch (err) {
     console.error("getAllTasks error:", err);
     return res.status(500).json({ message: "Could not load tasks" });
@@ -559,7 +681,8 @@ const getAllTasks = async (req, res) => {
 const getTaskById = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: "Invalid task ID" });
 
     const task = await Task.findById(id)
       .populate("assignedTo", "name email role avatarUrl")
@@ -598,7 +721,8 @@ const updateStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: "Invalid task ID" });
     if (!["pending", "in-progress", "completed"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
@@ -619,7 +743,9 @@ const updateStatus = async (req, res) => {
       .populate("participants", "name email role avatarUrl")
       .populate("assignedBy", "name email role avatarUrl");
 
-    const recipients = isTaskAssigner(task, req.user._id) ? getTaskParticipants(task) : getChatMembers(task);
+    const recipients = isTaskAssigner(task, req.user._id)
+      ? getTaskParticipants(task)
+      : getChatMembers(task);
 
     await notifyUsers({
       recipients,
@@ -630,7 +756,11 @@ const updateStatus = async (req, res) => {
       task: task._id,
     });
 
-    emitToTask(id, "statusUpdated", { taskId: id, status, updatedBy: req.user.name });
+    emitToTask(id, "statusUpdated", {
+      taskId: id,
+      status,
+      updatedBy: req.user.name,
+    });
 
     if (status === "completed" && oldStatus !== "completed") {
       emitToUsers(getChatMembers(task), "taskCompleted", {
@@ -657,14 +787,20 @@ const updateTask = async (req, res) => {
     const { id } = req.params;
     const { title, description, dueDate, recurrence, priority } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: "Invalid task ID" });
 
     const task = await Task.findById(id);
     if (!task) return res.status(404).json({ message: "Task not found" });
 
-    const canEdit = isTaskAssigner(task, req.user?._id) || isSuperAdmin(req.user?.role);
+    const canEdit =
+      isTaskAssigner(task, req.user?._id) || isSuperAdmin(req.user?.role);
     if (!canEdit) {
-      return res.status(403).json({ message: "Only the task creator or superadmin can edit this task" });
+      return res
+        .status(403)
+        .json({
+          message: "Only the task creator or superadmin can edit this task",
+        });
     }
 
     if (typeof title === "string" && title.trim()) task.title = title.trim();
@@ -708,7 +844,10 @@ const reassignTask = async (req, res) => {
     const { id } = req.params;
     const { newAssigneeId } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(newAssigneeId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(newAssigneeId)
+    ) {
       return res.status(400).json({ message: "Invalid ID" });
     }
 
@@ -716,12 +855,22 @@ const reassignTask = async (req, res) => {
     if (!task) return res.status(404).json({ message: "Task not found" });
 
     if (task.mode === "GROUP") {
-      return res.status(400).json({ message: "Group tasks can't be reassigned this way — edit participants instead" });
+      return res
+        .status(400)
+        .json({
+          message:
+            "Group tasks can't be reassigned this way — edit participants instead",
+        });
     }
 
-    const canReassign = isTaskAssigner(task, req.user?._id) || isSuperAdmin(req.user?.role);
+    const canReassign =
+      isTaskAssigner(task, req.user?._id) || isSuperAdmin(req.user?.role);
     if (!canReassign) {
-      return res.status(403).json({ message: "Only the task creator or superadmin can reassign this task" });
+      return res
+        .status(403)
+        .json({
+          message: "Only the task creator or superadmin can reassign this task",
+        });
     }
 
     const previousAssignee = task.assignedTo;
@@ -753,7 +902,8 @@ const reassignTask = async (req, res) => {
     }
 
     emitToUser(newAssigneeId, "newTask", updated);
-    if (previousAssignee) emitToUser(previousAssignee, "taskDeleted", { taskId: id });
+    if (previousAssignee)
+      emitToUser(previousAssignee, "taskDeleted", { taskId: id });
 
     return res.json(updated);
   } catch (err) {
@@ -771,8 +921,10 @@ const addChecklistItem = async (req, res) => {
     const { id } = req.params;
     const { text, assignedTo } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
-    if (!text?.trim()) return res.status(400).json({ message: "Checklist text required" });
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: "Invalid task ID" });
+    if (!text?.trim())
+      return res.status(400).json({ message: "Checklist text required" });
 
     const task = await Task.findById(id);
     if (!task) return res.status(404).json({ message: "Task not found" });
@@ -780,12 +932,17 @@ const addChecklistItem = async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
     if ((task.checklist?.length || 0) >= 100) {
-      return res.status(400).json({ message: "A task can hold at most 100 checklist items" });
+      return res
+        .status(400)
+        .json({ message: "A task can hold at most 100 checklist items" });
     }
 
     let assignee = null;
     if (assignedTo && mongoose.Types.ObjectId.isValid(assignedTo)) {
-      if (isTaskParticipant(task, assignedTo) || isTaskAssigner(task, assignedTo)) {
+      if (
+        isTaskParticipant(task, assignedTo) ||
+        isTaskAssigner(task, assignedTo)
+      ) {
         const User = require("../models/User");
         assignee = await User.findById(assignedTo).select("name").lean();
       }
@@ -826,7 +983,10 @@ const updateChecklistItem = async (req, res) => {
     const { id, itemId } = req.params;
     const { done, text, assignedTo } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(itemId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(itemId)
+    ) {
       return res.status(400).json({ message: "Invalid ID" });
     }
 
@@ -837,7 +997,8 @@ const updateChecklistItem = async (req, res) => {
     }
 
     const item = task.checklist.id(itemId);
-    if (!item) return res.status(404).json({ message: "Checklist item not found" });
+    if (!item)
+      return res.status(404).json({ message: "Checklist item not found" });
 
     if (typeof text === "string" && text.trim()) item.text = text.trim();
 
@@ -867,7 +1028,11 @@ const updateChecklistItem = async (req, res) => {
     const total = task.checklist.length;
     const completed = task.checklist.filter((entry) => entry.done).length;
 
-    emitToTask(id, "checklistItemUpdated", { taskId: id, item, progress: { completed, total } });
+    emitToTask(id, "checklistItemUpdated", {
+      taskId: id,
+      item,
+      progress: { completed, total },
+    });
 
     if (total > 0 && completed === total && done === true) {
       await notifyUsers({
@@ -891,7 +1056,10 @@ const deleteChecklistItem = async (req, res) => {
   try {
     const { id, itemId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(itemId)) {
+    if (
+      !mongoose.Types.ObjectId.isValid(id) ||
+      !mongoose.Types.ObjectId.isValid(itemId)
+    ) {
       return res.status(400).json({ message: "Invalid ID" });
     }
 
@@ -902,7 +1070,8 @@ const deleteChecklistItem = async (req, res) => {
     }
 
     const item = task.checklist.id(itemId);
-    if (!item) return res.status(404).json({ message: "Checklist item not found" });
+    if (!item)
+      return res.status(404).json({ message: "Checklist item not found" });
 
     item.deleteOne();
     await task.save();
@@ -910,7 +1079,11 @@ const deleteChecklistItem = async (req, res) => {
     const total = task.checklist.length;
     const completed = task.checklist.filter((entry) => entry.done).length;
 
-    emitToTask(id, "checklistItemDeleted", { taskId: id, itemId, progress: { completed, total } });
+    emitToTask(id, "checklistItemDeleted", {
+      taskId: id,
+      itemId,
+      progress: { completed, total },
+    });
 
     return res.json({ success: true, itemId, progress: { completed, total } });
   } catch (err) {
@@ -923,9 +1096,12 @@ const updateChecklistRecurrence = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: "Invalid task ID" });
 
-    const task = await Task.findById(id).select("assignedTo assignedBy participants mode");
+    const task = await Task.findById(id).select(
+      "assignedTo assignedBy participants mode",
+    );
     if (!task) return res.status(404).json({ message: "Task not found" });
     if (!canAccessTask(task, req.user?._id, req.user?.role)) {
       return res.status(403).json({ message: "Not authorized" });
@@ -933,11 +1109,16 @@ const updateChecklistRecurrence = async (req, res) => {
 
     const safe = normalizeChecklistRecurrence(req.body);
 
-    const updated = await Task.findByIdAndUpdate(id, { $set: { checklistRecurrence: safe } }, { new: true }).select(
-      "checklistRecurrence"
-    );
+    const updated = await Task.findByIdAndUpdate(
+      id,
+      { $set: { checklistRecurrence: safe } },
+      { new: true },
+    ).select("checklistRecurrence");
 
-    emitToTask(id, "checklistRecurrenceUpdated", { taskId: id, checklistRecurrence: updated.checklistRecurrence });
+    emitToTask(id, "checklistRecurrenceUpdated", {
+      taskId: id,
+      checklistRecurrence: updated.checklistRecurrence,
+    });
 
     return res.json(updated.checklistRecurrence);
   } catch (err) {
@@ -953,9 +1134,12 @@ const updateChecklistRecurrence = async (req, res) => {
 const togglePin = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid task ID" });
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: "Invalid task ID" });
 
-    const task = await Task.findById(id).select("assignedTo assignedBy participants mode pinnedBy");
+    const task = await Task.findById(id).select(
+      "assignedTo assignedBy participants mode pinnedBy",
+    );
     if (!task) return res.status(404).json({ message: "Task not found" });
     if (!canAccessTask(task, req.user?._id, req.user?.role)) {
       return res.status(403).json({ message: "Not authorized" });
@@ -966,7 +1150,9 @@ const togglePin = async (req, res) => {
 
     await Task.updateOne(
       { _id: id },
-      isPinned ? { $pull: { pinnedBy: req.user._id } } : { $addToSet: { pinnedBy: req.user._id } }
+      isPinned
+        ? { $pull: { pinnedBy: req.user._id } }
+        : { $addToSet: { pinnedBy: req.user._id } },
     );
 
     return res.json({ taskId: id, pinned: !isPinned });
@@ -999,7 +1185,7 @@ const deleteTask = async (req, res) => {
     }
 
     const task = await Task.findById(id).select(
-      "_id title assignedTo assignedBy participants mode"
+      "_id title assignedTo assignedBy participants mode",
     );
 
     if (!task) {
@@ -1053,16 +1239,16 @@ const deleteTask = async (req, res) => {
             } catch (cloudinaryError) {
               console.error(
                 `Cloudinary cleanup failed for ${file.filePublicId}:`,
-                cloudinaryError?.message
+                cloudinaryError?.message,
               );
             }
-          })
+          }),
         );
       }
     } catch (cleanupErr) {
       console.error(
         "deleteTask cloudinary cleanup failed:",
-        cleanupErr?.message
+        cleanupErr?.message,
       );
     }
 
