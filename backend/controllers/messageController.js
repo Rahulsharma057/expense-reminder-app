@@ -101,19 +101,22 @@ const notifyUsers = async ({
   let avatarUrl = "";
 
   if (senderId) {
-    try {
-      const sender = await User.findById(senderId)
-        .select("name avatarUrl")
-        .lean();
+  try {
+    const sender = await User.findById(senderId)
+      .select("name avatarUrl")
+      .lean();
 
-      avatarUrl = sender?.avatarUrl || "";
-    } catch (err) {
-      console.error(
-        "[push] could not load sender avatar:",
-        err.message
-      );
-    }
+    avatarUrl = sender?.avatarUrl || "";
+
+    console.log("[push] SENDER:", sender?.name);
+    console.log("[push] AVATAR:", avatarUrl);
+  } catch (err) {
+    console.error(
+      "[push] could not load sender avatar:",
+      err.message
+    );
   }
+}
 
   // ========================================================
   // PUSH NOTIFICATION

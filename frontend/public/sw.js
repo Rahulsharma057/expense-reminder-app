@@ -19,9 +19,11 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "",
 
-    // Sender ki profile photo
-    // Agar avatar nahi hai to app icon show hoga
+    // Sender profile photo
     icon: data.avatarUrl || "/icon-192.png",
+
+    // Larger notification image where supported
+    image: data.avatarUrl || undefined,
 
     // Notification badge
     badge: "/icon-192.png",
