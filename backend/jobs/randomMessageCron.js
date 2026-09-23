@@ -1,6 +1,8 @@
+
 const cron = require("node-cron");
 const NotificationPreference = require("../models/NotificationPreference");
 const MessageTemplate = require("../models/MessageTemplate");
+const User = require("../models/User");
 const Notification = require("../models/Notification");
 const DEFAULT_POOLS = require("../config/messagePools");
 
@@ -100,25 +102,65 @@ const pickAndSendFor = async (pref) => {
 
   if (!message) return;
 
-  // Random friendly notification heading
+  // ===========================================================
+  // GET RECIPIENT NAME + AVATAR
+  // ===========================================================
+  const recipient = await User.findById(pref.recipientUser)
+    .select("name avatarUrl")
+    .lean();
+
+  if (!recipient) {
+    console.error(
+      `Recipient user not found: ${pref.recipientUser}`
+    );
+    return;
+  }
+
+  // ===========================================================
+  // ONLY FIRST NAME
+  // Example:
+  // "Bhumika Sharma" -> "Bhumika"
+  // "Rahul Kumar"     -> "Rahul"
+  // ===========================================================
+  const userName = recipient.name
+    ? recipient.name.trim().split(/\s+/)[0]
+    : "You";
+
+  const avatarUrl = recipient.avatarUrl || "";
+
+  // ===========================================================
+  // RANDOM NOTIFICATION TITLE
+  // ===========================================================
   const notificationTitle = pickRandomTitle();
 
-  // Save notification in database
+  // ===========================================================
+  // NAME ONLY AT START OF BODY
+  // ===========================================================
+  const notificationBody = `${userName}, ${message.text}`;
+
+  // ===========================================================
+  // SAVE NOTIFICATION IN DATABASE
+  // ===========================================================
   await Notification.create({
     recipient: pref.recipientUser,
     type: "RANDOM_MESSAGE",
     title: notificationTitle,
-    message: message.text,
+    message: notificationBody,
   });
 
-  // Send push notification
+  // ===========================================================
+  // SEND PUSH NOTIFICATION
+  // ===========================================================
   await sendPushToUser(pref.recipientUser, {
     title: notificationTitle,
-    body: message.text,
+    body: notificationBody,
     tag: "random-message",
+    avatarUrl,
   });
 
-  // Update last sent time
+  // ===========================================================
+  // UPDATE LAST SENT TIME
+  // ===========================================================
   pref.lastSentAt = new Date();
   await pref.save();
 };
@@ -143,7 +185,7 @@ const startRandomMessageCron = () => {
               pref.lastSentAt.getTime() +
                 pref.frequencyMinutes * 60000
             )
-          : new Date(0); // Never sent -> send immediately
+          : new Date(0);
 
         if (now >= dueTime) {
           await pickAndSendFor(pref).catch((err) => {
@@ -174,3 +216,4 @@ module.exports = {
   startRandomMessageCron,
   pickAndSendFor,
 };
+
