@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -17,6 +17,8 @@ import {
   Divider,
   Tooltip,
   CircularProgress,
+  InputAdornment,
+  TextField,
 } from "@mui/material";
 
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
@@ -36,18 +38,84 @@ import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
 import EventRoundedIcon from "@mui/icons-material/EventRounded";
 import TrackChangesRoundedIcon from "@mui/icons-material/TrackChangesRounded";
 import ReportProblemRoundedIcon from "@mui/icons-material/ReportProblemRounded";
-import { usePathname, useRouter } from "next/navigation";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
-import NotificationsActiveRoundedIcon from "@mui/icons-material/NotificationsActiveRounded";
 import ShoppingCartRoundedIcon from "@mui/icons-material/ShoppingCartRounded";
+import WorkOutlineRoundedIcon from "@mui/icons-material/WorkOutlineRounded";
+import CelebrationRoundedIcon from "@mui/icons-material/CelebrationRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+// NOTE: NotificationsActiveRoundedIcon was previously imported TWICE in
+// this file (once here, once further down near AutoAwesomeRoundedIcon).
+// That's a duplicate-identifier error that fails the build outright —
+// removed the second one. Both "Reminders" and "Random Msgs" below
+// reuse this single import, which is fine; a component can be used in
+// more than one place from one import.
+
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 
 import { getStoredUser, clearSession } from "../lib/auth";
-// NEW: task/checklist bell — fully self-contained, see
-// components/NotificationBell.jsx
-import NotificationBell from "./Notificationbell";
-// NEW: profile photo upload
+// FIXED: the file is components/NotificationBell.jsx (capital N, capital
+// B). The import here was "./Notificationbell" — wrong case. That loads
+// fine on Windows/Mac (case-insensitive filesystems) but 404s on Linux/
+// Vercel builds, which are case-sensitive. This is almost certainly why
+// production was broken even though it worked locally.
+import NotificationBell from "./NotificationBell";
 import { uploadMyAvatar } from "../lib/userApi";
+
+/* =========================================================
+   NAV STRUCTURE
+   Grouped into sections instead of one 18-item flat list — with
+   this many destinations, a flat list makes the drawer a long,
+   directionless scroll on a phone. Grouping plus the search box
+   below are what "responsive" means here: the same information,
+   organized so it's still fast to use at 360px wide.
+========================================================= */
+
+const NAV_GROUPS = [
+  {
+    title: "Overview",
+    items: [
+      { label: "Dashboard", href: "/dashboard", icon: <DashboardRoundedIcon /> },
+    ],
+  },
+  {
+    title: "Work",
+    items: [
+      { label: "Tasks", href: "/tasks", icon: <ChecklistRtlRoundedIcon /> },
+      { label: "Checklists", href: "/checklists", icon: <PlaylistAddCheckRoundedIcon /> },
+      { label: "Meetings", href: "/meetings", icon: <VideocamRoundedIcon /> },
+      { label: "Appointments", href: "/appointments", icon: <EventRoundedIcon /> },
+    ],
+  },
+  {
+    title: "Finance",
+    items: [
+      { label: "Expenses", href: "/expenses", icon: <ReceiptLongRoundedIcon /> },
+      { label: "Reminders", href: "/reminders", icon: <NotificationsActiveRoundedIcon /> },
+      { label: "Udhaar Khata", href: "/udhaar", icon: <HandshakeRoundedIcon /> },
+      { label: "Shopping", href: "/shopping", icon: <ShoppingCartRoundedIcon /> },
+    ],
+  },
+  {
+    title: "Personal Growth",
+    items: [
+      { label: "Goals", href: "/goals", icon: <EmojiEventsRoundedIcon /> },
+      { label: "Habits", href: "/habits", icon: <TrackChangesRoundedIcon /> },
+      { label: "Notes", href: "/notes", icon: <StickyNote2RoundedIcon /> },
+      { label: "Mistakes", href: "/mistakes", icon: <ReportProblemRoundedIcon /> },
+      { label: "Good & Bad", href: "/good-bad", icon: <AutoAwesomeRoundedIcon /> },
+      { label: "Random Msgs", href: "/random-messages", icon: <NotificationsActiveRoundedIcon /> },
+    ],
+  },
+  {
+    title: "HR & Events",
+    items: [
+      { label: "Recruitment", href: "/recruitment", icon: <WorkOutlineRoundedIcon /> },
+      { label: "Events", href: "/events", icon: <CelebrationRoundedIcon /> },
+    ],
+  },
+];
 
 export default function Navbar() {
   const router = useRouter();
@@ -57,6 +125,7 @@ export default function Navbar() {
   // DRAWER STATE
   // =========================================================
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [navFilter, setNavFilter] = useState("");
 
   // =========================================================
   // USER STATE
@@ -68,8 +137,14 @@ export default function Navbar() {
     setUser(storedUser);
   }, []);
 
+  // Reset the search box each time the drawer opens/closes so it
+  // doesn't silently stay filtered next time.
+  useEffect(() => {
+    if (!drawerOpen) setNavFilter("");
+  }, [drawerOpen]);
+
   // =========================================================
-  // NEW: PROFILE PHOTO UPLOAD
+  // PROFILE PHOTO UPLOAD
   // =========================================================
   const avatarInputRef = useRef(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -97,8 +172,6 @@ export default function Navbar() {
       setAvatarUploading(true);
       const response = await uploadMyAvatar(file);
 
-      // Update both localStorage (so a refresh keeps it) and this
-      // component's state (so it shows immediately without a reload).
       const updatedUser = { ...user, ...response.data };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       setUser(updatedUser);
@@ -112,81 +185,38 @@ export default function Navbar() {
   };
 
   // =========================================================
-  // NAVIGATION ITEMS
+  // NAVIGATION ITEMS (grouped + role-gated "Users" section)
   // =========================================================
- const NAV_ITEMS = [
-    {
-      label: "Dashboard",
-      href: "/dashboard",
-      icon: <DashboardRoundedIcon />,
-    },
-    {
-      label: "Tasks",
-      href: "/tasks",
-      icon: <ChecklistRtlRoundedIcon />,
-    },
-    {
-      label: "Checklists",
-      href: "/checklists",
-      icon: <PlaylistAddCheckRoundedIcon />,
-    },
-    {
-      label: "Expenses",
-      href: "/expenses",
-      icon: <ReceiptLongRoundedIcon />,
-    },
-    {
-      label: "Reminders",
-      href: "/reminders",
-      icon: <NotificationsActiveRoundedIcon />,
-    },
-    {
-      label: "Udhaar Khata",
-      href: "/udhaar",
-      icon: <HandshakeRoundedIcon />,
-    },
-    {
-      label: "Meetings",
-      href: "/meetings",
-      icon: <VideocamRoundedIcon />,
-    },
-    {
-  label: "Goals",
-  href: "/goals",
-  icon: <EmojiEventsRoundedIcon />,
-},
-{
-  label: "Habits",
-  href: "/habits",
-  icon: <TrackChangesRoundedIcon />,
-},
-{
-  label: "Notes",
-  href: "/notes",
-  icon: <StickyNote2RoundedIcon />,
-},{
-  label: "Appointments",
-  href: "/appointments",
-  icon: <EventRoundedIcon />,
-},{
-  label: "Mistakes",
-  href: "/mistakes",
-  icon: <ReportProblemRoundedIcon />,
-},
-{ label: "Good & Bad", href: "/good-bad", icon: <AutoAwesomeRoundedIcon /> },
-{ label: "Random Msgs", href: "/random-messages", icon: <NotificationsActiveRoundedIcon /> },
-{ label: "Shopping", href: "/shopping", icon: <ShoppingCartRoundedIcon /> },
-  ];
 
-  // Owner AND superadmin both manage users now — superadmin needs the
-  // same "Users" screen to create owners, deactivate accounts, etc.
-  if (user?.role === "owner" || user?.role === "superadmin") {
-    NAV_ITEMS.push({
-      label: "Users",
-      href: "/users",
-      icon: <PeopleRoundedIcon />,
-    });
-  }
+  const navGroups = useMemo(() => {
+    const groups = NAV_GROUPS.map((group) => ({ ...group, items: [...group.items] }));
+
+    // Owner AND superadmin both manage users — superadmin needs the
+    // same "Users" screen to create owners, deactivate accounts, etc.
+    if (user?.role === "owner" || user?.role === "superadmin") {
+      groups.push({
+        title: "Admin",
+        items: [{ label: "Users", href: "/users", icon: <PeopleRoundedIcon /> }],
+      });
+    }
+
+    return groups;
+  }, [user?.role]);
+
+  // Filters within groups by label, case-insensitive, and drops any
+  // group that ends up empty — this is what keeps an 18+ item drawer
+  // fast to use on a small screen instead of a long blind scroll.
+  const filteredGroups = useMemo(() => {
+    const query = navFilter.trim().toLowerCase();
+    if (!query) return navGroups;
+
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.label.toLowerCase().includes(query)),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [navGroups, navFilter]);
 
   // =========================================================
   // ACTIVE ROUTE
@@ -196,10 +226,7 @@ export default function Navbar() {
       return pathname === "/dashboard";
     }
 
-    return (
-      pathname === href ||
-      pathname.startsWith(`${href}/`)
-    );
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   // =========================================================
@@ -227,17 +254,10 @@ export default function Navbar() {
     user?.username?.trim()?.[0]?.toUpperCase() ||
     "U";
 
-  const userName =
-    user?.name?.trim() ||
-    user?.username?.trim() ||
-    "User";
+  const userName = user?.name?.trim() || user?.username?.trim() || "User";
 
   const userRole =
-    user?.role === "owner"
-      ? "Owner"
-      : user?.role === "superadmin"
-      ? "Superadmin"
-      : "Member";
+    user?.role === "owner" ? "Owner" : user?.role === "superadmin" ? "Superadmin" : "Member";
 
   return (
     <>
@@ -248,34 +268,19 @@ export default function Navbar() {
         position="sticky"
         elevation={0}
         sx={{
-          background:
-            "linear-gradient(135deg, #7C3AED 0%, #6D28D9 55%, #5B21B6 100%)",
-
-          boxShadow:
-            "0 4px 18px rgba(76, 29, 149, 0.18)",
-
-          zIndex: (theme) =>
-            theme.zIndex.drawer + 1,
+          background: "linear-gradient(135deg, #7C3AED 0%, #6D28D9 55%, #5B21B6 100%)",
+          boxShadow: "0 4px 18px rgba(76, 29, 149, 0.18)",
+          zIndex: (theme) => theme.zIndex.drawer + 1,
         }}
       >
         <Toolbar
           sx={{
-            minHeight: {
-              xs: 60,
-              sm: 66,
-              md: 70,
-            },
-
-            px: {
-              xs: 1,
-              sm: 2,
-              md: 3,
-            },
-
-            gap: {
-              xs: 1,
-              sm: 1.5,
-            },
+            minHeight: { xs: 60, sm: 66, md: 70 },
+            // Slightly tighter horizontal padding at the very smallest
+            // width so menu + brand + bell + avatar all still fit
+            // without the toolbar itself needing to scroll.
+            px: { xs: 0.75, sm: 2, md: 3 },
+            gap: { xs: 0.5, sm: 1.5 },
           }}
         >
           {/* =================================================
@@ -285,26 +290,12 @@ export default function Navbar() {
             onClick={() => setDrawerOpen(true)}
             aria-label="Open menu"
             sx={{
-              width: {
-                xs: 40,
-                sm: 42,
-              },
-
-              height: {
-                xs: 40,
-                sm: 42,
-              },
-
+              width: { xs: 38, sm: 42 },
+              height: { xs: 38, sm: 42 },
               flexShrink: 0,
-
               color: "#FFFFFF",
-
               borderRadius: 2,
-
-              "&:hover": {
-                backgroundColor:
-                  "rgba(255,255,255,0.12)",
-              },
+              "&:hover": { backgroundColor: "rgba(255,255,255,0.12)" },
             }}
           >
             <MenuRoundedIcon />
@@ -318,108 +309,57 @@ export default function Navbar() {
             sx={{
               display: "flex",
               alignItems: "center",
-
-              gap: {
-                xs: 0.75,
-                sm: 1,
-              },
-
+              gap: { xs: 0.6, sm: 1 },
               minWidth: 0,
               flex: 1,
-
               cursor: "pointer",
-
               userSelect: "none",
             }}
           >
             <Box
               sx={{
-                width: {
-                  xs: 34,
-                  sm: 38,
-                },
-
-                height: {
-                  xs: 34,
-                  sm: 38,
-                },
-
+                width: { xs: 32, sm: 38 },
+                height: { xs: 32, sm: 38 },
                 flexShrink: 0,
-
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-
                 borderRadius: 2,
-
-                backgroundColor:
-                  "rgba(255,255,255,0.16)",
-
-                border:
-                  "1px solid rgba(255,255,255,0.2)",
+                backgroundColor: "rgba(255,255,255,0.16)",
+                border: "1px solid rgba(255,255,255,0.2)",
               }}
             >
-              <AccountBalanceWalletRoundedIcon
-                sx={{
-                  fontSize: {
-                    xs: 20,
-                    sm: 22,
-                  },
-
-                  color: "#FFFFFF",
-                }}
-              />
+              <AccountBalanceWalletRoundedIcon sx={{ fontSize: { xs: 18, sm: 22 }, color: "#FFFFFF" }} />
             </Box>
 
-            <Box
-              sx={{
-                minWidth: 0,
-              }}
-            >
+            <Box sx={{ minWidth: 0 }}>
               <Typography
                 sx={{
                   color: "#FFFFFF",
-
-                  fontSize: {
-                    xs: 14,
-                    sm: 16,
-                    md: 17,
-                  },
-
+                  fontSize: { xs: 13, sm: 16, md: 17 },
                   lineHeight: 1.2,
-
                   fontWeight: 800,
-
                   whiteSpace: "nowrap",
-
                   overflow: "hidden",
-
                   textOverflow: "ellipsis",
                 }}
               >
                 Expense Reminder
               </Typography>
 
+              {/* Subtitle drops out earlier (at 'sm' instead of only
+                  'xs') to free up room for the bell + avatar on
+                  narrow-but-not-tiny phones (~375-410px), where the
+                  full row was tightest. */}
               <Typography
                 sx={{
-                  display: {
-                    xs: "none",
-                    sm: "block",
-                  },
-
+                  display: { xs: "none", md: "block" },
                   mt: 0.2,
-
-                  color:
-                    "rgba(255,255,255,0.72)",
-
+                  color: "rgba(255,255,255,0.72)",
                   fontSize: 10.5,
-
                   fontWeight: 500,
-
                   whiteSpace: "nowrap",
-
                   overflow: "hidden",
-
                   textOverflow: "ellipsis",
                 }}
               >
@@ -429,9 +369,9 @@ export default function Navbar() {
           </Box>
 
           {/* =================================================
-              NOTIFICATION BELL
-              Visible on every breakpoint — it's the one thing
-              worth reaching without opening the drawer.
+              NOTIFICATION BELL — visible on every breakpoint,
+              it's the one thing worth reaching without opening
+              the drawer.
           ================================================= */}
           <Box sx={{ flexShrink: 0, color: "#FFFFFF" }}>
             <NotificationBell />
@@ -442,24 +382,13 @@ export default function Navbar() {
           ================================================= */}
           <Box
             sx={{
-              display: {
-                xs: "none",
-                sm: "flex",
-              },
-
+              display: { xs: "none", sm: "flex" },
               alignItems: "center",
-
               gap: 1,
-
               flexShrink: 0,
-
-              maxWidth: {
-                sm: 220,
-                md: 280,
-              },
+              maxWidth: { sm: 220, md: 280 },
             }}
           >
-            {/* NEW: clickable avatar — uploads a profile photo. */}
             <Tooltip title="Change profile photo">
               <Box
                 onClick={handleAvatarPick}
@@ -509,23 +438,14 @@ export default function Navbar() {
               </Box>
             </Tooltip>
 
-            <Box
-              sx={{
-                minWidth: 0,
-              }}
-            >
+            <Box sx={{ minWidth: 0 }}>
               <Typography
                 sx={{
                   color: "#FFFFFF",
-
                   fontSize: 13,
-
                   fontWeight: 700,
-
                   whiteSpace: "nowrap",
-
                   overflow: "hidden",
-
                   textOverflow: "ellipsis",
                 }}
               >
@@ -534,13 +454,9 @@ export default function Navbar() {
 
               <Typography
                 sx={{
-                  color:
-                    "rgba(255,255,255,0.7)",
-
+                  color: "rgba(255,255,255,0.7)",
                   fontSize: 10.5,
-
                   textTransform: "capitalize",
-
                   whiteSpace: "nowrap",
                 }}
               >
@@ -556,34 +472,17 @@ export default function Navbar() {
             <IconButton
               onClick={logout}
               sx={{
-                display: {
-                  xs: "none",
-                  sm: "flex",
-                },
-
+                display: { xs: "none", sm: "flex" },
                 width: 40,
                 height: 40,
-
                 flexShrink: 0,
-
-                ml: {
-                  sm: 0.5,
-                  md: 1,
-                },
-
+                ml: { sm: 0.5, md: 1 },
                 color: "#FFFFFF",
-
                 borderRadius: 2,
-
-                "&:hover": {
-                  backgroundColor:
-                    "rgba(255,255,255,0.12)",
-                },
+                "&:hover": { backgroundColor: "rgba(255,255,255,0.12)" },
               }}
             >
-              <LogoutRoundedIcon
-                fontSize="small"
-              />
+              <LogoutRoundedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Toolbar>
@@ -596,108 +495,37 @@ export default function Navbar() {
         anchor="left"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        ModalProps={{
-          keepMounted: true,
-        }}
+        ModalProps={{ keepMounted: true }}
         sx={{
           "& .MuiDrawer-paper": {
-            width: {
-              xs: "calc(100vw - 24px)",
-              sm: 310,
-            },
-
+            width: { xs: "calc(100vw - 24px)", sm: 310 },
             maxWidth: 310,
-
-            /*
-             * IMPORTANT:
-             * Drawer navbar ke neeche se start hoga.
-             */
-            top: {
-              xs: 60,
-              sm: 66,
-              md: 70,
-            },
-
-            /*
-             * Remaining viewport height only.
-             */
-            height: {
-              xs: "calc(100dvh - 60px)",
-              sm: "calc(100dvh - 66px)",
-              md: "calc(100dvh - 70px)",
-            },
-
+            top: { xs: 60, sm: 66, md: 70 },
+            height: { xs: "calc(100dvh - 60px)", sm: "calc(100dvh - 66px)", md: "calc(100dvh - 70px)" },
             boxSizing: "border-box",
-
             overflow: "hidden",
-
             border: "none",
-
-            borderTopRightRadius: {
-              xs: 18,
-              sm: 20,
-            },
-
-            borderBottomRightRadius: {
-              xs: 18,
-              sm: 20,
-            },
-
+            borderTopRightRadius: { xs: 18, sm: 20 },
+            borderBottomRightRadius: { xs: 18, sm: 20 },
             backgroundColor: "#FFFFFF",
-
-            boxShadow:
-              "8px 0 30px rgba(15, 23, 42, 0.14)",
+            boxShadow: "8px 0 30px rgba(15, 23, 42, 0.14)",
           },
         }}
       >
-        <Box
-          sx={{
-            width: "100%",
-            height: "100%",
-
-            minHeight: 0,
-
-            display: "flex",
-            flexDirection: "column",
-
-            overflow: "hidden",
-          }}
-        >
+        <Box sx={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* =================================================
               PROFILE HEADER
           ================================================= */}
           <Box
             sx={{
               flexShrink: 0,
-
-              px: {
-                xs: 1.75,
-                sm: 2,
-              },
-
-              py: {
-                xs: 1.75,
-                sm: 2,
-              },
-
-              background:
-                "linear-gradient(135deg, #F8F5FF 0%, #FFFFFF 100%)",
-
-              borderBottom:
-                "1px solid #EEF0F4",
+              px: { xs: 1.75, sm: 2 },
+              py: { xs: 1.75, sm: 2 },
+              background: "linear-gradient(135deg, #F8F5FF 0%, #FFFFFF 100%)",
+              borderBottom: "1px solid #EEF0F4",
             }}
           >
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-
-                gap: 1.25,
-
-                minWidth: 0,
-              }}
-            >
-              {/* Avatar — clickable, same upload handler as the desktop one. */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
               <Tooltip title="Change profile photo">
                 <Box
                   onClick={handleAvatarPick}
@@ -733,30 +561,15 @@ export default function Navbar() {
                 </Box>
               </Tooltip>
 
-              {/* User information */}
-              <Box
-                sx={{
-                  minWidth: 0,
-                  flex: 1,
-                }}
-              >
+              <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
                   sx={{
                     color: "#17151F",
-
-                    fontSize: {
-                      xs: 14,
-                      sm: 15,
-                    },
-
+                    fontSize: { xs: 14, sm: 15 },
                     fontWeight: 750,
-
                     lineHeight: 1.3,
-
                     whiteSpace: "nowrap",
-
                     overflow: "hidden",
-
                     textOverflow: "ellipsis",
                   }}
                 >
@@ -767,245 +580,138 @@ export default function Navbar() {
                   label={userRole}
                   size="small"
                   sx={{
-                    mt: 0.6,
-
-                    height: 22,
-
-                    fontSize: 10.5,
-
-                    fontWeight: 700,
-
-                    textTransform: "capitalize",
-
-                    bgcolor: "#F0E9FF",
-
-                    color: "#6D28D9",
-
-                    "& .MuiChip-label": {
-                      px: 1,
-                    },
+                    mt: 0.6, height: 22, fontSize: 10.5, fontWeight: 700, textTransform: "capitalize",
+                    bgcolor: "#F0E9FF", color: "#6D28D9", "& .MuiChip-label": { px: 1 },
                   }}
                 />
               </Box>
 
-              {/* Close button */}
               <IconButton
-                onClick={() =>
-                  setDrawerOpen(false)
-                }
+                onClick={() => setDrawerOpen(false)}
                 aria-label="Close menu"
                 sx={{
-                  width: 34,
-                  height: 34,
-
-                  flexShrink: 0,
-
-                  color: "#777181",
-
-                  borderRadius: 1.75,
-
-                  "&:hover": {
-                    backgroundColor: "#F5F3F8",
-                    color: "#5B21B6",
-                  },
+                  width: 34, height: 34, flexShrink: 0, color: "#777181", borderRadius: 1.75,
+                  "&:hover": { backgroundColor: "#F5F3F8", color: "#5B21B6" },
                 }}
               >
-                <Typography
-                  component="span"
-                  sx={{
-                    fontSize: 20,
-                    lineHeight: 1,
-                    fontWeight: 400,
-                  }}
-                >
-                  ×
-                </Typography>
+                <Typography component="span" sx={{ fontSize: 20, lineHeight: 1, fontWeight: 400 }}>×</Typography>
               </IconButton>
             </Box>
           </Box>
 
           {/* =================================================
-              SCROLLABLE MENU AREA
+              SEARCH — with 18+ destinations now, a quick filter
+              is what actually keeps this usable one-handed on a
+              phone instead of a long blind scroll.
+          ================================================= */}
+          <Box sx={{ flexShrink: 0, px: { xs: 1.5, sm: 2 }, pt: 1.5, pb: 0.5 }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search menu..."
+              value={navFilter}
+              onChange={(event) => setNavFilter(event.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRoundedIcon sx={{ fontSize: 18, color: "#A9A2B5" }} />
+                  </InputAdornment>
+                ),
+                endAdornment: navFilter ? (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setNavFilter("")} sx={{ p: 0.3 }}>
+                      <CloseRoundedIcon sx={{ fontSize: 16, color: "#A9A2B5" }} />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              }}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5, bgcolor: "#FAF9FC", fontSize: 13.5 } }}
+            />
+          </Box>
+
+          {/* =================================================
+              SCROLLABLE MENU AREA — grouped sections
           ================================================= */}
           <Box
             sx={{
               flex: 1,
-
               minHeight: 0,
-
               overflowY: "auto",
               overflowX: "hidden",
-
-              px: {
-                xs: 1.25,
-                sm: 1.5,
-              },
-
-              py: 1.5,
-
-              /*
-               * Custom scrollbar
-               */
-              "&::-webkit-scrollbar": {
-                width: 5,
-              },
-
-              "&::-webkit-scrollbar-track": {
-                background: "transparent",
-              },
-
-              "&::-webkit-scrollbar-thumb": {
-                backgroundColor: "#D8D2E8",
-                borderRadius: 10,
-              },
-
-              "&::-webkit-scrollbar-thumb:hover": {
-                backgroundColor: "#B8AED0",
-              },
+              px: { xs: 1.25, sm: 1.5 },
+              py: 1,
+              "&::-webkit-scrollbar": { width: 5 },
+              "&::-webkit-scrollbar-track": { background: "transparent" },
+              "&::-webkit-scrollbar-thumb": { backgroundColor: "#D8D2E8", borderRadius: 10 },
+              "&::-webkit-scrollbar-thumb:hover": { backgroundColor: "#B8AED0" },
             }}
           >
-            <Typography
-              sx={{
-                px: 1,
-
-                mb: 1,
-
-                color: "#9A94A6",
-
-                fontSize: 10,
-
-                fontWeight: 800,
-
-                textTransform: "uppercase",
-
-                letterSpacing: 0.9,
-              }}
-            >
-              Main Menu
-            </Typography>
-
-            <List
-              disablePadding
-              sx={{
-                width: "100%",
-              }}
-            >
-              {NAV_ITEMS.map((item) => {
-                const active = isActive(
-                  item.href
-                );
-
-                return (
-                  <ListItemButton
-                    key={item.href}
-                    onClick={() =>
-                      go(item.href)
-                    }
+            {filteredGroups.length === 0 ? (
+              <Typography sx={{ px: 1, py: 3, textAlign: "center", fontSize: 13, color: "#9A94A6" }}>
+                No matches for &quot;{navFilter}&quot;
+              </Typography>
+            ) : (
+              filteredGroups.map((group, groupIndex) => (
+                <Box key={group.title} sx={{ mb: groupIndex === filteredGroups.length - 1 ? 0 : 1.5 }}>
+                  <Typography
                     sx={{
-                      width: "100%",
-
-                      minHeight: {
-                        xs: 46,
-                        sm: 48,
-                      },
-
-                      mb: 0.6,
-
-                      px: 1.25,
-
-                      borderRadius: 2,
-
-                      color: active
-                        ? "#6D28D9"
-                        : "#4B4655",
-
-                      backgroundColor: active
-                        ? "#F1EBFF"
-                        : "transparent",
-
-                      position: "relative",
-
-                      overflow: "hidden",
-
-                      "&::before": active
-                        ? {
-                            content: '""',
-
-                            position:
-                              "absolute",
-
-                            left: 0,
-
-                            top: "20%",
-
-                            width: 3,
-
-                            height: "60%",
-
-                            borderRadius: 5,
-
-                            backgroundColor:
-                              "#7C3AED",
-                          }
-                        : {},
-
-                      "&:hover": {
-                        backgroundColor: active
-                          ? "#F1EBFF"
-                          : "#F8F6FC",
-                      },
-
-                      transition:
-                        "all 0.2s ease",
+                      px: 1, mb: 0.7, mt: groupIndex === 0 ? 0 : 0.5,
+                      color: "#9A94A6", fontSize: 10, fontWeight: 800,
+                      textTransform: "uppercase", letterSpacing: 0.9,
                     }}
                   >
-                    <ListItemIcon
-                      sx={{
-                        minWidth: {
-                          xs: 38,
-                          sm: 40,
-                        },
+                    {group.title}
+                  </Typography>
 
-                        color: active
-                          ? "#7C3AED"
-                          : "#777181",
+                  <List disablePadding sx={{ width: "100%" }}>
+                    {group.items.map((item) => {
+                      const active = isActive(item.href);
 
-                        transition:
-                          "color 0.2s ease",
-                      }}
-                    >
-                      {React.cloneElement(
-                        item.icon,
-                        {
-                          fontSize: "small",
-                        }
-                      )}
-                    </ListItemIcon>
+                      return (
+                        <ListItemButton
+                          key={item.href}
+                          onClick={() => go(item.href)}
+                          sx={{
+                            width: "100%",
+                            minHeight: { xs: 44, sm: 46 },
+                            mb: 0.4,
+                            px: 1.25,
+                            borderRadius: 2,
+                            color: active ? "#6D28D9" : "#4B4655",
+                            backgroundColor: active ? "#F1EBFF" : "transparent",
+                            position: "relative",
+                            overflow: "hidden",
+                            "&::before": active
+                              ? {
+                                  content: '""', position: "absolute", left: 0, top: "20%",
+                                  width: 3, height: "60%", borderRadius: 5, backgroundColor: "#7C3AED",
+                                }
+                              : {},
+                            "&:hover": { backgroundColor: active ? "#F1EBFF" : "#F8F6FC" },
+                            transition: "all 0.2s ease",
+                          }}
+                        >
+                          <ListItemIcon sx={{ minWidth: { xs: 36, sm: 38 }, color: active ? "#7C3AED" : "#777181", transition: "color 0.2s ease" }}>
+                            {React.cloneElement(item.icon, { fontSize: "small" })}
+                          </ListItemIcon>
 
-                    <ListItemText
-                      primary={item.label}
-                      primaryTypographyProps={{
-                        fontSize: {
-                          xs: 13.5,
-                          sm: 14,
-                        },
-
-                        fontWeight: active
-                          ? 700
-                          : 550,
-
-                        noWrap: true,
-
-                        overflow: "hidden",
-
-                        textOverflow:
-                          "ellipsis",
-                      }}
-                    />
-                  </ListItemButton>
-                );
-              })}
-            </List>
+                          <ListItemText
+                            primary={item.label}
+                            primaryTypographyProps={{
+                              fontSize: { xs: 13, sm: 13.5 },
+                              fontWeight: active ? 700 : 550,
+                              noWrap: true,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          />
+                        </ListItemButton>
+                      );
+                    })}
+                  </List>
+                </Box>
+              ))
+            )}
           </Box>
 
           {/* =================================================
@@ -1014,102 +720,29 @@ export default function Navbar() {
           <Box
             sx={{
               flexShrink: 0,
-
-              px: {
-                xs: 1.25,
-                sm: 1.5,
-              },
-
+              px: { xs: 1.25, sm: 1.5 },
               pt: 1.25,
-
-              pb: {
-                xs: 1.5,
-                sm: 1.75,
-              },
-
-              borderTop:
-                "1px solid #EEF0F4",
-
+              pb: { xs: 1.5, sm: 1.75 },
+              borderTop: "1px solid #EEF0F4",
               backgroundColor: "#FFFFFF",
-
-              boxShadow:
-                "0 -5px 15px rgba(15, 23, 42, 0.04)",
+              boxShadow: "0 -5px 15px rgba(15, 23, 42, 0.04)",
             }}
           >
-            <Typography
-              sx={{
-                px: 1,
-
-                mb: 0.75,
-
-                color: "#9A94A6",
-
-                fontSize: 10,
-
-                fontWeight: 800,
-
-                textTransform: "uppercase",
-
-                letterSpacing: 0.9,
-              }}
-            >
+            <Typography sx={{ px: 1, mb: 0.75, color: "#9A94A6", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.9 }}>
               Account
             </Typography>
 
-            {/* Logout */}
             <ListItemButton
               onClick={logout}
-              sx={{
-                minHeight: 44,
-
-                px: 1.25,
-
-                borderRadius: 2,
-
-                color: "#DC2626",
-
-                "&:hover": {
-                  backgroundColor: "#FEF2F2",
-                },
-              }}
+              sx={{ minHeight: 44, px: 1.25, borderRadius: 2, color: "#DC2626", "&:hover": { backgroundColor: "#FEF2F2" } }}
             >
-              <ListItemIcon
-                sx={{
-                  minWidth: 38,
-
-                  color: "#DC2626",
-                }}
-              >
-                <LogoutRoundedIcon
-                  fontSize="small"
-                />
+              <ListItemIcon sx={{ minWidth: 38, color: "#DC2626" }}>
+                <LogoutRoundedIcon fontSize="small" />
               </ListItemIcon>
-
-              <ListItemText
-                primary="Sign out"
-                primaryTypographyProps={{
-                  fontSize: 14,
-
-                  fontWeight: 650,
-
-                  noWrap: true,
-                }}
-              />
+              <ListItemText primary="Sign out" primaryTypographyProps={{ fontSize: 14, fontWeight: 650, noWrap: true }} />
             </ListItemButton>
 
-            <Typography
-              sx={{
-                mt: 1.1,
-
-                textAlign: "center",
-
-                color: "#AAA5B3",
-
-                fontSize: 10,
-
-                fontWeight: 500,
-              }}
-            >
+            <Typography sx={{ mt: 1.1, textAlign: "center", color: "#AAA5B3", fontSize: 10, fontWeight: 500 }}>
               Expense Reminder
             </Typography>
           </Box>
@@ -1117,13 +750,7 @@ export default function Navbar() {
       </Drawer>
 
       {/* Shared hidden input for both avatar-click targets above. */}
-      <input
-        type="file"
-        accept="image/*"
-        hidden
-        ref={avatarInputRef}
-        onChange={handleAvatarChange}
-      />
+      <input type="file" accept="image/*" hidden ref={avatarInputRef} onChange={handleAvatarChange} />
     </>
   );
 }

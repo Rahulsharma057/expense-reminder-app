@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Task = require("../models/Task");
 const Message = require("../models/Message");
+const User = require("../models/User");
 const { createNotification } = require("../services/notificationService");
 const { getIO } = require("../utils/socket");
 const { sendPushToUsers } = require("../utils/webPush");
@@ -62,29 +63,69 @@ const emitToUsers = (userIds, event, payload) => {
   [...new Set((userIds || []).filter(Boolean).map(toId))].forEach((id) => io.to(id).emit(event, payload));
 };
 
-const notifyUsers = async ({ recipients = [], senderId, type, title, message, task }) => {
+const notifyUsers = async ({
+  recipients = [],
+  senderId,
+  type,
+  title,
+  message,
+  task,
+}) => {
   const uniqueRecipients = [
     ...new Set(
-      recipients.filter(Boolean).map(toId).filter(Boolean).filter((id) => id !== String(senderId))
+      recipients
+        .filter(Boolean)
+        .map(toId)
+        .filter(Boolean)
+        .filter((id) => id !== String(senderId))
     ),
   ];
 
   if (!uniqueRecipients.length) return;
 
   await Promise.all(
-    uniqueRecipients.map((recipient) => createNotification({ recipient, type, title, message, task }))
+    uniqueRecipients.map((recipient) =>
+      createNotification({
+        recipient,
+        type,
+        title,
+        message,
+        task,
+      })
+    )
   );
 
-  emitToUsers(uniqueRecipients, "notification", { type, title, message, task, createdAt: new Date() });
+  emitToUsers(uniqueRecipients, "notification", {
+    type,
+    title,
+    message,
+    task,
+    createdAt: new Date(),
+  });
+
+  // Get sender's profile photo for browser push notification
+  let avatarUrl = "";
+
+  if (senderId) {
+    try {
+      const sender = await User.findById(senderId)
+        .select("name avatarUrl")
+        .lean();
+
+      avatarUrl = sender?.avatarUrl || "";
+    } catch (err) {
+      console.error("[push] could not load sender avatar:", err.message);
+    }
+  }
 
   sendPushToUsers(uniqueRecipients, {
     title,
     body: message,
     url: `/tasks?open=${task}`,
     tag: `task-${task}`,
+    avatarUrl,
   }).catch((err) => console.error("[push] send failed:", err.message));
 };
-
 // ==========================================================
 // RECURRENCE (unchanged logic, trimmed comments)
 // ==========================================================

@@ -46,6 +46,20 @@ const randomMessageRoutes = require("./routes/randomMessageRoutes");
 const shoppingRoutes = require("./routes/shoppingRoutes");
 const { startRandomMessageCron } = require("./jobs/randomMessageCron");
 
+// NEW: recruitment module (jobs / candidates / interviews). Interview
+// reminders + confirmation nudges run every 15 min via their own cron.
+const jobRoutes = require("./routes/jobRoutes");
+const candidateRoutes = require("./routes/candidateRoutes");
+const interviewRoutes = require("./routes/interviewRoutes");
+const { startInterviewReminderJob } = require("./jobs/interviewReminder");
+
+// NEW: event/function planning module (items, budget, guests, RSVP).
+// Daily 09:00 job flags anything unresolved for events happening
+// tomorrow.
+const eventRoutes = require("./routes/eventRoutes");
+const eventItemTemplateRoutes = require("./routes/eventItemTemplateRoutes");
+const { startEventReminderJob } = require("./jobs/eventReminder");
+
 const app = express();
 
 /* =========================================================
@@ -181,6 +195,15 @@ app.use("/api/good-bad", goodBadRoutes);
 app.use("/api/random-messages", randomMessageRoutes);
 app.use("/api/shopping", shoppingRoutes);
 
+// NEW: recruitment module — job openings, candidates, interviews.
+app.use("/api/jobs", jobRoutes);
+app.use("/api/candidates", candidateRoutes);
+app.use("/api/interviews", interviewRoutes);
+
+// NEW: event/function planning module — items/budget, guests, RSVP.
+app.use("/api/events", eventRoutes);
+app.use("/api/event-item-templates", eventItemTemplateRoutes);
+
 /* =========================================================
   ERROR HANDLING
 ========================================================= */
@@ -220,6 +243,13 @@ connectDB()
       // NEW: checks every 5 minutes which random-message preferences
       // are due (based on their own per-recipient frequency) and sends.
       startRandomMessageCron();
+
+      // NEW: interview reminders + confirmation nudges, every 15 min.
+      startInterviewReminderJob();
+
+      // NEW: daily 09:00 check for events happening tomorrow with
+      // unresolved items (price unknown / not yet delivered).
+      startEventReminderJob();
     });
   })
   .catch((error) => {

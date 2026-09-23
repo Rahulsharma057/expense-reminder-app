@@ -1,20 +1,69 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
-  Alert, Avatar, AvatarGroup, Badge, Box, Button, Checkbox, Chip,
-  CircularProgress, Collapse, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, FormControl, IconButton, LinearProgress, Menu,
-  MenuItem, Paper, Select, Stack, TextField, Tooltip, Typography,
+  Alert,
+  Avatar,
+  AvatarGroup,
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  IconButton,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
 } from "@mui/material";
 
 import {
-  Add, ArrowBack, Check, CheckCircle, Close, Delete, Done, DoneAll,
-  Download, Edit, ExpandLess, ExpandMore, Groups, Image as ImageIcon,
-  MoreVert, PushPin, PushPinOutlined, Refresh, Repeat, Send, TaskAlt,
-  AccessTime, PlaylistAddCheck, SettingsRounded,
+  Add,
+  ArrowBack,
+  Check,
+  CheckCircle,
+  Close,
+  Delete,
+  Done,
+  DoneAll,
+  Download,
+  Edit,
+  ExpandLess,
+  ExpandMore,
+  Groups,
+  Image as ImageIcon,
+  MoreVert,
+  PushPin,
+  PushPinOutlined,
+  Refresh,
+  Repeat,
+  Send,
+  TaskAlt,
+  AccessTime,
+  PlaylistAddCheck,
+  SettingsRounded,
 } from "@mui/icons-material";
 
 import { toast } from "react-toastify";
@@ -38,9 +87,21 @@ const STATUS_OPTIONS = [
 ];
 
 const MODE_OPTIONS = [
-  { value: "INDIVIDUAL", label: "Individual", description: "Assign to one person" },
-  { value: "SEPARATE", label: "Separate", description: "A private copy for each person" },
-  { value: "GROUP", label: "Group", description: "One shared task and one shared chat" },
+  {
+    value: "INDIVIDUAL",
+    label: "Individual",
+    description: "Assign to one person",
+  },
+  {
+    value: "SEPARATE",
+    label: "Separate",
+    description: "A private copy for each person",
+  },
+  {
+    value: "GROUP",
+    label: "Group",
+    description: "One shared task and one shared chat",
+  },
 ];
 
 const RECURRENCE_OPTIONS = [
@@ -57,14 +118,28 @@ const PRIORITY_OPTIONS = [
 
 // NEW: chat wallpapers, restored from the old standalone chat page.
 const WALLPAPERS = {
-  default: { label: "Lavender", bg: "linear-gradient(180deg, #f7f5fc, #efe9fb)" },
-  doodle: { label: "Soft grid", bg: "repeating-linear-gradient(45deg, #f5f2fb, #f5f2fb 10px, #ece6f8 10px, #ece6f8 20px)" },
+  default: {
+    label: "Lavender",
+    bg: "linear-gradient(180deg, #f7f5fc, #efe9fb)",
+  },
+  doodle: {
+    label: "Soft grid",
+    bg: "repeating-linear-gradient(45deg, #f5f2fb, #f5f2fb 10px, #ece6f8 10px, #ece6f8 20px)",
+  },
   mint: { label: "Mint", bg: "linear-gradient(180deg,#eafaf4,#dcf3ea)" },
   peach: { label: "Peach", bg: "linear-gradient(180deg,#fff3ea,#ffe6d8)" },
   dark: { label: "Midnight", bg: "linear-gradient(180deg,#221d33,#191527)" },
 };
 
-const PALETTE = ["#0ea5e9", "#16a34a", "#f97316", "#db2777", "#7c3aed", "#0d9488", "#ca8a04"];
+const PALETTE = [
+  "#0ea5e9",
+  "#16a34a",
+  "#f97316",
+  "#db2777",
+  "#7c3aed",
+  "#0d9488",
+  "#ca8a04",
+];
 
 /* =========================================================
    HELPERS
@@ -109,13 +184,18 @@ const colorFor = (id) => {
 };
 
 const priorityMeta = (priority) =>
-  PRIORITY_OPTIONS.find((option) => option.value === priority) || PRIORITY_OPTIONS[1];
+  PRIORITY_OPTIONS.find((option) => option.value === priority) ||
+  PRIORITY_OPTIONS[1];
 
 const formatDate = (date) => {
   if (!date) return "No due date";
   const d = new Date(date);
   if (Number.isNaN(d.getTime())) return date;
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 };
 
 const formatTime = (date) => {
@@ -210,7 +290,8 @@ const downloadImage = async (url, filename) => {
 function MessageTicks({ message, memberIds, myId }) {
   const others = memberIds.filter((id) => id !== getId(myId));
   const seen = (message.seenBy || []).map(getId);
-  const seenByAll = others.length > 0 && others.every((id) => seen.includes(id));
+  const seenByAll =
+    others.length > 0 && others.every((id) => seen.includes(id));
 
   if (message.pending) {
     return <AccessTime sx={{ fontSize: 12, opacity: 0.6 }} />;
@@ -235,7 +316,13 @@ function MessageTicks({ message, memberIds, myId }) {
 ========================================================= */
 
 function ChecklistPanel({
-  task, open, onToggleOpen, onAdd, onToggleItem, onDeleteItem, onSetRecurrence,
+  task,
+  open,
+  onToggleOpen,
+  onAdd,
+  onToggleItem,
+  onDeleteItem,
+  onSetRecurrence,
 }) {
   const [newItem, setNewItem] = useState("");
   const [adding, setAdding] = useState(false);
@@ -272,7 +359,13 @@ function ChecklistPanel({
               Checklist
             </Typography>
 
-            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: total && completed === total ? "#15803D" : "#7E7789" }}>
+            <Typography
+              sx={{
+                fontSize: 11.5,
+                fontWeight: 700,
+                color: total && completed === total ? "#15803D" : "#7E7789",
+              }}
+            >
               {completed}/{total || 0} done
             </Typography>
 
@@ -281,7 +374,13 @@ function ChecklistPanel({
                 size="small"
                 icon={<Repeat sx={{ fontSize: 12 }} />}
                 label={recurrence.frequency}
-                sx={{ height: 18, fontSize: 9.5, fontWeight: 700, borderRadius: 1, textTransform: "capitalize" }}
+                sx={{
+                  height: 18,
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  borderRadius: 1,
+                  textTransform: "capitalize",
+                }}
               />
             )}
           </Stack>
@@ -291,7 +390,10 @@ function ChecklistPanel({
               variant="determinate"
               value={percent}
               sx={{
-                mt: 0.6, height: 5, borderRadius: 5, bgcolor: "#F0EBFA",
+                mt: 0.6,
+                height: 5,
+                borderRadius: 5,
+                bgcolor: "#F0EBFA",
                 "& .MuiLinearProgress-bar": {
                   borderRadius: 5,
                   bgcolor: completed === total ? "#16A34A" : PURPLE,
@@ -312,19 +414,38 @@ function ChecklistPanel({
         </IconButton>
 
         <IconButton size="small">
-          {open ? <ExpandLess sx={{ fontSize: 19 }} /> : <ExpandMore sx={{ fontSize: 19 }} />}
+          {open ? (
+            <ExpandLess sx={{ fontSize: 19 }} />
+          ) : (
+            <ExpandMore sx={{ fontSize: 19 }} />
+          )}
         </IconButton>
       </Stack>
 
-      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
-        <Typography sx={{ px: 2, pt: 1, pb: 0.5, fontSize: 10.5, fontWeight: 800, color: "#948DA0" }}>
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={() => setMenuAnchor(null)}
+      >
+        <Typography
+          sx={{
+            px: 2,
+            pt: 1,
+            pb: 0.5,
+            fontSize: 10.5,
+            fontWeight: 800,
+            color: "#948DA0",
+          }}
+        >
           RESET CHECKLIST EVERY
         </Typography>
 
         {RECURRENCE_OPTIONS.map((option) => (
           <MenuItem
             key={option.value}
-            selected={recurrence?.enabled && recurrence.frequency === option.value}
+            selected={
+              recurrence?.enabled && recurrence.frequency === option.value
+            }
             onClick={() => {
               onSetRecurrence({ enabled: true, frequency: option.value });
               setMenuAnchor(null);
@@ -350,7 +471,14 @@ function ChecklistPanel({
       </Menu>
 
       <Collapse in={open} unmountOnExit>
-        <Box sx={{ px: { xs: 1.5, sm: 2 }, pb: 1.5, maxHeight: 230, overflowY: "auto" }}>
+        <Box
+          sx={{
+            px: { xs: 1.5, sm: 2 },
+            pb: 1.5,
+            maxHeight: 230,
+            overflowY: "auto",
+          }}
+        >
           {items.map((item) => (
             <Stack
               key={item._id}
@@ -363,7 +491,11 @@ function ChecklistPanel({
                 size="small"
                 checked={Boolean(item.done)}
                 onChange={() => onToggleItem(item, !item.done)}
-                sx={{ p: 0.5, color: "#C6BFD4", "&.Mui-checked": { color: PURPLE } }}
+                sx={{
+                  p: 0.5,
+                  color: "#C6BFD4",
+                  "&.Mui-checked": { color: PURPLE },
+                }}
               />
 
               <Box sx={{ flex: 1, minWidth: 0, pt: 0.5 }}>
@@ -386,13 +518,21 @@ function ChecklistPanel({
                 )}
               </Box>
 
-              <IconButton size="small" onClick={() => onDeleteItem(item)} sx={{ p: 0.5 }}>
+              <IconButton
+                size="small"
+                onClick={() => onDeleteItem(item)}
+                sx={{ p: 0.5 }}
+              >
                 <Close sx={{ fontSize: 14, color: "#B9B2C4" }} />
               </IconButton>
             </Stack>
           ))}
 
-          <Stack direction="row" spacing={0.8} sx={{ mt: items.length ? 1 : 0.5 }}>
+          <Stack
+            direction="row"
+            spacing={0.8}
+            sx={{ mt: items.length ? 1 : 0.5 }}
+          >
             <TextField
               fullWidth
               size="small"
@@ -407,7 +547,9 @@ function ChecklistPanel({
               }}
               sx={{
                 "& .MuiOutlinedInput-root": {
-                  borderRadius: 2, bgcolor: "#FAF9FC", fontSize: 12.5,
+                  borderRadius: 2,
+                  bgcolor: "#FAF9FC",
+                  fontSize: 12.5,
                 },
               }}
             />
@@ -416,7 +558,10 @@ function ChecklistPanel({
               onClick={submit}
               disabled={!newItem.trim() || adding}
               sx={{
-                width: 36, height: 36, bgcolor: "#F3EEFF", color: PURPLE,
+                width: 36,
+                height: 36,
+                bgcolor: "#F3EEFF",
+                color: PURPLE,
                 "&:hover": { bgcolor: "#E9E0FF" },
               }}
             >
@@ -588,7 +733,10 @@ function TasksInner() {
 
       img.onload = () => {
         const maxDimension = 1080;
-        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const scale = Math.min(
+          1,
+          maxDimension / Math.max(img.width, img.height),
+        );
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
@@ -606,7 +754,9 @@ function TasksInner() {
           setChatSettingsAnchor(null);
           toast.success("Wallpaper updated");
         } catch {
-          toast.error("That image is too large to save as a wallpaper — try a smaller one");
+          toast.error(
+            "That image is too large to save as a wallpaper — try a smaller one",
+          );
         }
       };
 
@@ -674,8 +824,8 @@ function TasksInner() {
 
       setUsers(
         data.filter(
-          (item) => item?.isActive !== false && !sameId(item?._id, myId)
-        )
+          (item) => item?.isActive !== false && !sameId(item?._id, myId),
+        ),
       );
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not load users"));
@@ -719,14 +869,16 @@ function TasksInner() {
 
       setTasks((previous) =>
         previous.map((item) =>
-          item._id === task._id ? { ...item, unread: false, unreadCount: 0 } : item
-        )
+          item._id === task._id
+            ? { ...item, unread: false, unreadCount: 0 }
+            : item,
+        ),
       );
 
       api.patch(`/tasks/${task._id}/messages/seen`).catch(() => {});
 
       requestAnimationFrame(() =>
-        chatBottomRef.current?.scrollIntoView({ block: "end" })
+        chatBottomRef.current?.scrollIntoView({ block: "end" }),
       );
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not open task"));
@@ -781,7 +933,7 @@ function TasksInner() {
       setTasks((previous) =>
         previous.some((task) => task._id === incoming._id)
           ? previous
-          : [incoming, ...previous]
+          : [incoming, ...previous],
       );
     };
 
@@ -808,7 +960,7 @@ function TasksInner() {
             unread: !isOpen,
             unreadCount: isOpen ? 0 : (task.unreadCount || 0) + 1,
           };
-        })
+        }),
       );
     };
 
@@ -857,7 +1009,7 @@ function TasksInner() {
       setTypingUser(null);
 
       requestAnimationFrame(() =>
-        chatBottomRef.current?.scrollIntoView({ behavior: "smooth" })
+        chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }),
       );
     };
 
@@ -870,10 +1022,10 @@ function TasksInner() {
               messages: previous.messages.map((m) =>
                 m._id === payload.messageId
                   ? { ...m, text: payload.text, editedAt: payload.editedAt }
-                  : m
+                  : m,
               ),
             }
-          : previous
+          : previous,
       );
     };
 
@@ -885,11 +1037,16 @@ function TasksInner() {
               ...previous,
               messages: previous.messages.map((m) =>
                 m._id === payload.messageId
-                  ? { ...m, deleted: true, photoUrl: "", text: "This message was deleted" }
-                  : m
+                  ? {
+                      ...m,
+                      deleted: true,
+                      photoUrl: "",
+                      text: "This message was deleted",
+                    }
+                  : m,
               ),
             }
-          : previous
+          : previous,
       );
     };
 
@@ -902,22 +1059,24 @@ function TasksInner() {
               messages: previous.messages.map((m) =>
                 (m.seenBy || []).map(getId).includes(getId(payload.userId))
                   ? m
-                  : { ...m, seenBy: [...(m.seenBy || []), payload.userId] }
+                  : { ...m, seenBy: [...(m.seenBy || []), payload.userId] },
               ),
             }
-          : previous
+          : previous,
       );
     };
 
     const onStatusUpdated = (payload) => {
       if (!forThisTask(payload)) return;
       setSelectedTask((previous) =>
-        previous ? { ...previous, status: payload.status } : previous
+        previous ? { ...previous, status: payload.status } : previous,
       );
       setTasks((previous) =>
         previous.map((task) =>
-          task._id === payload.taskId ? { ...task, status: payload.status } : task
-        )
+          task._id === payload.taskId
+            ? { ...task, status: payload.status }
+            : task,
+        ),
       );
     };
 
@@ -928,7 +1087,10 @@ function TasksInner() {
         if (previous.checklist?.some((item) => item._id === payload.item._id)) {
           return previous;
         }
-        return { ...previous, checklist: [...(previous.checklist || []), payload.item] };
+        return {
+          ...previous,
+          checklist: [...(previous.checklist || []), payload.item],
+        };
       });
     };
 
@@ -939,10 +1101,10 @@ function TasksInner() {
           ? {
               ...previous,
               checklist: (previous.checklist || []).map((item) =>
-                item._id === payload.item._id ? payload.item : item
+                item._id === payload.item._id ? payload.item : item,
               ),
             }
-          : previous
+          : previous,
       );
     };
 
@@ -953,10 +1115,10 @@ function TasksInner() {
           ? {
               ...previous,
               checklist: (previous.checklist || []).filter(
-                (item) => item._id !== payload.itemId
+                (item) => item._id !== payload.itemId,
               ),
             }
-          : previous
+          : previous,
       );
     };
 
@@ -967,10 +1129,14 @@ function TasksInner() {
           ? {
               ...previous,
               checklist: (previous.checklist || []).map((item) => ({
-                ...item, done: false, doneBy: null, doneByName: "", doneAt: null,
+                ...item,
+                done: false,
+                doneBy: null,
+                doneByName: "",
+                doneAt: null,
               })),
             }
-          : previous
+          : previous,
       );
     };
 
@@ -1029,7 +1195,8 @@ function TasksInner() {
   ======================================================= */
 
   const loadOlderMessages = useCallback(async () => {
-    if (!selectedTask?._id || isLoadingOlderRef.current || !hasMoreMessages) return;
+    if (!selectedTask?._id || isLoadingOlderRef.current || !hasMoreMessages)
+      return;
 
     const oldest = selectedTask.messages?.[0];
     if (!oldest) return;
@@ -1043,8 +1210,8 @@ function TasksInner() {
     try {
       const response = await api.get(
         `/tasks/${selectedTask._id}/messages?before=${encodeURIComponent(
-          oldest.createdAt
-        )}&limit=30`
+          oldest.createdAt,
+        )}&limit=30`,
       );
 
       const older = response.data?.messages || [];
@@ -1092,7 +1259,7 @@ function TasksInner() {
           loadOlderMessages();
         }
       },
-      { root, threshold: 0, rootMargin: "200px 0px 0px 0px" }
+      { root, threshold: 0, rootMargin: "200px 0px 0px 0px" },
     );
 
     observer.observe(sentinel);
@@ -1116,7 +1283,7 @@ function TasksInner() {
       inProgress: tasks.filter((task) => task.status === "in-progress").length,
       completed: tasks.filter((task) => task.status === "completed").length,
     }),
-    [tasks]
+    [tasks],
   );
 
   /* =======================================================
@@ -1140,7 +1307,8 @@ function TasksInner() {
 
   const handleCreateTask = async () => {
     if (!title.trim()) return toast.error("Task title is required");
-    if (mode === "INDIVIDUAL" && !assignedTo) return toast.error("Please select a user");
+    if (mode === "INDIVIDUAL" && !assignedTo)
+      return toast.error("Please select a user");
     if (mode !== "INDIVIDUAL" && assignedToList.length < 2) {
       return toast.error("Please select at least two users");
     }
@@ -1192,17 +1360,21 @@ function TasksInner() {
     const previousStatus = selectedTask?.status;
 
     setSelectedTask((previous) =>
-      previous?._id === taskId ? { ...previous, status } : previous
+      previous?._id === taskId ? { ...previous, status } : previous,
     );
     setTasks((previous) =>
-      previous.map((task) => (task._id === taskId ? { ...task, status } : task))
+      previous.map((task) =>
+        task._id === taskId ? { ...task, status } : task,
+      ),
     );
 
     try {
       await api.patch(`/tasks/${taskId}/status`, { status });
     } catch (error) {
       setSelectedTask((previous) =>
-        previous?._id === taskId ? { ...previous, status: previousStatus } : previous
+        previous?._id === taskId
+          ? { ...previous, status: previousStatus }
+          : previous,
       );
       toast.error(getErrorMessage(error, "Could not update status"));
     }
@@ -1215,13 +1387,15 @@ function TasksInner() {
 
     setTasks((previous) => {
       const updated = previous.map((item) =>
-        item._id === task._id ? { ...item, pinned: nextPinned } : item
+        item._id === task._id ? { ...item, pinned: nextPinned } : item,
       );
       return [...updated].sort((a, b) => Number(b.pinned) - Number(a.pinned));
     });
 
     setSelectedTask((previous) =>
-      previous?._id === task._id ? { ...previous, pinned: nextPinned } : previous
+      previous?._id === task._id
+        ? { ...previous, pinned: nextPinned }
+        : previous,
     );
 
     try {
@@ -1229,8 +1403,8 @@ function TasksInner() {
     } catch (error) {
       setTasks((previous) =>
         previous.map((item) =>
-          item._id === task._id ? { ...item, pinned: !nextPinned } : item
-        )
+          item._id === task._id ? { ...item, pinned: !nextPinned } : item,
+        ),
       );
       toast.error(getErrorMessage(error, "Could not update pin"));
     }
@@ -1243,19 +1417,23 @@ function TasksInner() {
   const appendMessage = (message) => {
     setSelectedTask((previous) => {
       if (!previous) return previous;
-      if (previous.messages?.some((m) => m._id === message._id)) return previous;
+      if (previous.messages?.some((m) => m._id === message._id))
+        return previous;
       return { ...previous, messages: [...(previous.messages || []), message] };
     });
 
     requestAnimationFrame(() =>
-      chatBottomRef.current?.scrollIntoView({ behavior: "smooth" })
+      chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }),
     );
   };
 
   const handleMessageTextChange = (event) => {
     setMessageText(event.target.value);
     if (selectedTask?._id && user?.name) {
-      getSocket().emit("typing", { taskId: selectedTask._id, userName: user.name });
+      getSocket().emit("typing", {
+        taskId: selectedTask._id,
+        userName: user.name,
+      });
     }
   };
 
@@ -1285,8 +1463,10 @@ function TasksInner() {
 
     if (!file || !selectedTask?._id) return;
 
-    if (!file.type.startsWith("image/")) return toast.error("Please select an image");
-    if (file.size > 5 * 1024 * 1024) return toast.error("Image must be under 5MB");
+    if (!file.type.startsWith("image/"))
+      return toast.error("Please select an image");
+    if (file.size > 5 * 1024 * 1024)
+      return toast.error("Image must be under 5MB");
 
     const caption = messageText.trim();
     setMessageText("");
@@ -1301,7 +1481,7 @@ function TasksInner() {
       const response = await api.post(
         `/tasks/${selectedTask._id}/messages/photo`,
         formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
+        { headers: { "Content-Type": "multipart/form-data" } },
       );
 
       appendMessage(response.data);
@@ -1325,7 +1505,7 @@ function TasksInner() {
     try {
       const response = await api.patch(
         `/tasks/${selectedTask._id}/messages/${editingMessage._id}`,
-        { text: editText.trim() }
+        { text: editText.trim() },
       );
 
       setSelectedTask((previous) => ({
@@ -1333,7 +1513,7 @@ function TasksInner() {
         messages: previous.messages.map((message) =>
           message._id === editingMessage._id
             ? { ...message, ...response.data }
-            : message
+            : message,
         ),
       }));
 
@@ -1349,7 +1529,7 @@ function TasksInner() {
 
     try {
       await api.delete(
-        `/tasks/${selectedTask._id}/messages/${message._id}?scope=${scope}`
+        `/tasks/${selectedTask._id}/messages/${message._id}?scope=${scope}`,
       );
 
       setSelectedTask((previous) => ({
@@ -1358,7 +1538,12 @@ function TasksInner() {
           if (item._id !== message._id) return item;
 
           if (scope === "everyone") {
-            return { ...item, deleted: true, photoUrl: "", text: "This message was deleted" };
+            return {
+              ...item,
+              deleted: true,
+              photoUrl: "",
+              text: "This message was deleted",
+            };
           }
 
           return { ...item, hiddenForMe: true, photoUrl: "", text: "" };
@@ -1375,7 +1560,9 @@ function TasksInner() {
 
   const addChecklistItem = async (text) => {
     try {
-      const response = await api.post(`/tasks/${selectedTask._id}/checklist`, { text });
+      const response = await api.post(`/tasks/${selectedTask._id}/checklist`, {
+        text,
+      });
       setSelectedTask((previous) => ({
         ...previous,
         checklist: [...(previous.checklist || []), response.data],
@@ -1396,17 +1583,19 @@ function TasksInner() {
               doneByName: done ? getUserName(user) : "",
               doneAt: done ? new Date().toISOString() : null,
             }
-          : entry
+          : entry,
       ),
     }));
 
     try {
-      await api.patch(`/tasks/${selectedTask._id}/checklist/${item._id}`, { done });
+      await api.patch(`/tasks/${selectedTask._id}/checklist/${item._id}`, {
+        done,
+      });
     } catch (error) {
       setSelectedTask((previous) => ({
         ...previous,
         checklist: previous.checklist.map((entry) =>
-          entry._id === item._id ? item : entry
+          entry._id === item._id ? item : entry,
         ),
       }));
       toast.error(getErrorMessage(error, "Could not update item"));
@@ -1435,7 +1624,9 @@ function TasksInner() {
     try {
       await api.patch(`/tasks/${selectedTask._id}/checklist/recurrence`, value);
       toast.success(
-        value.enabled ? `Checklist resets ${value.frequency}` : "Repeat turned off"
+        value.enabled
+          ? `Checklist resets ${value.frequency}`
+          : "Repeat turned off",
       );
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not update repeat"));
@@ -1453,7 +1644,9 @@ function TasksInner() {
       setDeleting(true);
       await api.delete(`/tasks/${selectedTask._id}`);
       toast.success("Task deleted");
-      setTasks((previous) => previous.filter((task) => task._id !== selectedTask._id));
+      setTasks((previous) =>
+        previous.filter((task) => task._id !== selectedTask._id),
+      );
       closeTask();
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not delete task"));
@@ -1466,11 +1659,14 @@ function TasksInner() {
      DERIVED
   ======================================================= */
 
-  const memberIds = useMemo(() => getChatMemberIds(selectedTask), [selectedTask]);
+  const memberIds = useMemo(
+    () => getChatMemberIds(selectedTask),
+    [selectedTask],
+  );
 
   const chatTitle = useMemo(
     () => getChatTitle(selectedTask, myId),
-    [selectedTask, myId]
+    [selectedTask, myId],
   );
 
   // NEW: dark-mode-aware colors for the chat panel only (task list and
@@ -1487,9 +1683,24 @@ function TasksInner() {
 
   const statusChip = (status) => {
     const map = {
-      completed: { icon: <CheckCircle sx={{ fontSize: 14 }} />, label: "Completed", bg: "#E8F7EE", color: "#15803D" },
-      "in-progress": { icon: <AccessTime sx={{ fontSize: 14 }} />, label: "In Progress", bg: "#FFF4E5", color: "#B45309" },
-      pending: { icon: <TaskAlt sx={{ fontSize: 14 }} />, label: "Pending", bg: "#F1EDF8", color: "#6B6478" },
+      completed: {
+        icon: <CheckCircle sx={{ fontSize: 14 }} />,
+        label: "Completed",
+        bg: "#E8F7EE",
+        color: "#15803D",
+      },
+      "in-progress": {
+        icon: <AccessTime sx={{ fontSize: 14 }} />,
+        label: "In Progress",
+        bg: "#FFF4E5",
+        color: "#B45309",
+      },
+      pending: {
+        icon: <TaskAlt sx={{ fontSize: 14 }} />,
+        label: "Pending",
+        bg: "#F1EDF8",
+        color: "#6B6478",
+      },
     };
     const cfg = map[status] || map.pending;
 
@@ -1499,8 +1710,12 @@ function TasksInner() {
         icon={cfg.icon}
         label={cfg.label}
         sx={{
-          height: 22, fontSize: 10, fontWeight: 800, borderRadius: 1.5,
-          bgcolor: cfg.bg, color: cfg.color,
+          height: 22,
+          fontSize: 10,
+          fontWeight: 800,
+          borderRadius: 1.5,
+          bgcolor: cfg.bg,
+          color: cfg.color,
           "& .MuiChip-icon": { color: cfg.color, ml: 0.5 },
         }}
       />
@@ -1512,14 +1727,23 @@ function TasksInner() {
   ======================================================= */
 
   return (
-    <Box sx={{ minHeight: "100vh", background: "linear-gradient(180deg,#FAF9FF 0%,#FFFFFF 55%)", overflowX: "hidden" }}>
-      <Box sx={{ display: { xs: selectedTask ? "none" : "block", md: "block" } }}>
+    <Box
+      sx={{
+        minHeight: "100vh",
+        background: "linear-gradient(180deg,#FAF9FF 0%,#FFFFFF 55%)",
+        overflowX: "hidden",
+      }}
+    >
+      <Box
+        sx={{ display: { xs: selectedTask ? "none" : "block", md: "block" } }}
+      >
         <Navbar />
       </Box>
 
       <Box
         sx={{
-          maxWidth: 1500, mx: "auto",
+          maxWidth: 1500,
+          mx: "auto",
           px: { xs: selectedTask ? 0 : 1.5, sm: 2.5, md: 3 },
           py: { xs: selectedTask ? 0 : 2, sm: 2.5, md: 3 },
         }}
@@ -1531,10 +1755,20 @@ function TasksInner() {
           justifyContent="space-between"
           alignItems={{ xs: "stretch", sm: "center" }}
           spacing={2}
-          sx={{ mb: 2.5, display: { xs: selectedTask ? "none" : "flex", md: "flex" } }}
+          sx={{
+            mb: 2.5,
+            display: { xs: selectedTask ? "none" : "flex", md: "flex" },
+          }}
         >
           <Box>
-            <Typography sx={{ fontSize: { xs: 24, sm: 28 }, fontWeight: 800, color: "#171225", letterSpacing: -0.6 }}>
+            <Typography
+              sx={{
+                fontSize: { xs: 24, sm: 28 },
+                fontWeight: 800,
+                color: "#171225",
+                letterSpacing: -0.6,
+              }}
+            >
               Tasks
             </Typography>
             <Typography sx={{ mt: 0.5, color: "#77728A", fontSize: 13.5 }}>
@@ -1542,12 +1776,22 @@ function TasksInner() {
             </Typography>
           </Box>
 
-          <Stack direction="row" spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ width: { xs: "100%", sm: "auto" } }}
+          >
             <Tooltip title="Refresh">
               <IconButton
                 onClick={loadTasks}
                 disabled={loading}
-                sx={{ width: 42, height: 42, borderRadius: 2.5, border: "1px solid #E7E1F5", bgcolor: "#fff" }}
+                sx={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 2.5,
+                  border: "1px solid #E7E1F5",
+                  bgcolor: "#fff",
+                }}
               >
                 <Refresh fontSize="small" />
               </IconButton>
@@ -1562,8 +1806,12 @@ function TasksInner() {
                 setCreateOpen(true);
               }}
               sx={{
-                minHeight: 42, borderRadius: 2.5, px: 2, textTransform: "none",
-                fontWeight: 700, bgcolor: PURPLE,
+                minHeight: 42,
+                borderRadius: 2.5,
+                px: 2,
+                textTransform: "none",
+                fontWeight: 700,
+                bgcolor: PURPLE,
                 boxShadow: "0 8px 20px rgba(124,58,237,.20)",
                 "&:hover": { bgcolor: PURPLE_DARK },
               }}
@@ -1578,15 +1826,30 @@ function TasksInner() {
         <Paper
           elevation={0}
           sx={{
-            p: 1, mb: 2, borderRadius: 3, border: "1px solid #ECE8F5", bgcolor: "#fff",
+            p: 1,
+            mb: 2,
+            borderRadius: 3,
+            border: "1px solid #ECE8F5",
+            bgcolor: "#fff",
             display: { xs: selectedTask ? "none" : "block", md: "block" },
           }}
         >
-          <Stack direction="row" spacing={0.8} sx={{ overflowX: "auto", "&::-webkit-scrollbar": { display: "none" } }}>
+          <Stack
+            direction="row"
+            spacing={0.8}
+            sx={{
+              overflowX: "auto",
+              "&::-webkit-scrollbar": { display: "none" },
+            }}
+          >
             {[
               { key: "all", label: "All", count: counts.all },
               { key: "pending", label: "Pending", count: counts.pending },
-              { key: "in-progress", label: "In Progress", count: counts.inProgress },
+              {
+                key: "in-progress",
+                label: "In Progress",
+                count: counts.inProgress,
+              },
               { key: "completed", label: "Completed", count: counts.completed },
             ].map((filter) => {
               const active = activeFilter === filter.key;
@@ -1595,8 +1858,13 @@ function TasksInner() {
                   key={filter.key}
                   onClick={() => setActiveFilter(filter.key)}
                   sx={{
-                    flexShrink: 0, minWidth: "auto", borderRadius: 2, px: 1.6, py: 0.9,
-                    textTransform: "none", fontWeight: 700,
+                    flexShrink: 0,
+                    minWidth: "auto",
+                    borderRadius: 2,
+                    px: 1.6,
+                    py: 0.9,
+                    textTransform: "none",
+                    fontWeight: 700,
                     color: active ? "#fff" : "#686176",
                     bgcolor: active ? PURPLE : "transparent",
                     "&:hover": { bgcolor: active ? PURPLE_DARK : "#F5F2FA" },
@@ -1606,8 +1874,14 @@ function TasksInner() {
                   <Box
                     component="span"
                     sx={{
-                      ml: 0.8, minWidth: 21, height: 21, px: 0.5, borderRadius: 10,
-                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      ml: 0.8,
+                      minWidth: 21,
+                      height: 21,
+                      px: 0.5,
+                      borderRadius: 10,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                       fontSize: 11,
                       bgcolor: active ? "rgba(255,255,255,.18)" : "#F1EDF8",
                     }}
@@ -1646,38 +1920,73 @@ function TasksInner() {
               flexDirection: "column",
               borderRadius: { xs: 0, md: 3 },
               border: { xs: "none", md: "1px solid #ECE8F5" },
-              bgcolor: "#fff", overflow: "hidden",
+              bgcolor: "#fff",
+              overflow: "hidden",
               height: { xs: "calc(100dvh - 155px)", md: 680 },
             }}
           >
             <Box sx={{ px: 2, py: 1.6, borderBottom: "1px solid #F0EDF5" }}>
-              <Typography sx={{ fontWeight: 800, fontSize: 15 }}>My Tasks</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: 15 }}>
+                My Tasks
+              </Typography>
               <Typography sx={{ color: "#8A8498", fontSize: 12, mt: 0.3 }}>
-                {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
+                {filteredTasks.length} task
+                {filteredTasks.length !== 1 ? "s" : ""}
               </Typography>
             </Box>
 
             {loading ? (
-              <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, gap: 1.5 }}>
+              <Stack
+                alignItems="center"
+                justifyContent="center"
+                sx={{ flex: 1, gap: 1.5 }}
+              >
                 <CircularProgress size={28} sx={{ color: PURPLE }} />
-                <Typography sx={{ color: "#8A8498", fontSize: 13 }}>Loading tasks...</Typography>
+                <Typography sx={{ color: "#8A8498", fontSize: 13 }}>
+                  Loading tasks...
+                </Typography>
               </Stack>
             ) : filteredTasks.length === 0 ? (
-              <Stack alignItems="center" justifyContent="center" sx={{ flex: 1, px: 3, textAlign: "center" }}>
-                <Avatar sx={{ width: 62, height: 62, mb: 1.5, bgcolor: "#F1EAFE", color: PURPLE }}>
+              <Stack
+                alignItems="center"
+                justifyContent="center"
+                sx={{ flex: 1, px: 3, textAlign: "center" }}
+              >
+                <Avatar
+                  sx={{
+                    width: 62,
+                    height: 62,
+                    mb: 1.5,
+                    bgcolor: "#F1EAFE",
+                    color: PURPLE,
+                  }}
+                >
                   <TaskAlt />
                 </Avatar>
-                <Typography sx={{ fontWeight: 800, fontSize: 16 }}>No tasks found</Typography>
-                <Typography sx={{ color: "#8A8498", fontSize: 13, mt: 0.5, maxWidth: 300 }}>
+                <Typography sx={{ fontWeight: 800, fontSize: 16 }}>
+                  No tasks found
+                </Typography>
+                <Typography
+                  sx={{
+                    color: "#8A8498",
+                    fontSize: 13,
+                    mt: 0.5,
+                    maxWidth: 300,
+                  }}
+                >
                   Create a task or change the selected filter.
                 </Typography>
               </Stack>
             ) : (
               <Stack
                 sx={{
-                  overflowY: "auto", flex: 1,
+                  overflowY: "auto",
+                  flex: 1,
                   "&::-webkit-scrollbar": { width: 5 },
-                  "&::-webkit-scrollbar-thumb": { background: "#DDD7E8", borderRadius: 10 },
+                  "&::-webkit-scrollbar-thumb": {
+                    background: "#DDD7E8",
+                    borderRadius: 10,
+                  },
                 }}
                 divider={<Divider sx={{ borderColor: "#F2EFF6" }} />}
               >
@@ -1685,7 +1994,9 @@ function TasksInner() {
                   const isSelected = selectedTask?._id === task._id;
                   const partnerUser = getChatPartnerUser(task, myId);
                   const partner = getChatTitle(task, myId);
-                  const doneCount = (task.checklist || []).filter((i) => i.done).length;
+                  const doneCount = (task.checklist || []).filter(
+                    (i) => i.done,
+                  ).length;
                   const totalCount = (task.checklist || []).length;
                   const pMeta = priorityMeta(task.priority);
                   // Backend sends a real number now; fall back to the
@@ -1697,53 +2008,116 @@ function TasksInner() {
                       key={task._id}
                       onClick={() => openTask(task)}
                       sx={{
-                        p: 1.6, cursor: "pointer", transition: "0.18s",
+                        p: 1.6,
+                        cursor: "pointer",
+                        transition: "0.18s",
                         bgcolor: isSelected ? "#F7F3FF" : "#fff",
-                        "&:hover": { bgcolor: isSelected ? "#F4EEFF" : "#FAF8FE" },
+                        "&:hover": {
+                          bgcolor: isSelected ? "#F4EEFF" : "#FAF8FE",
+                        },
                       }}
                     >
-                      <Stack direction="row" spacing={1.2} alignItems="flex-start">
+                      <Stack
+                        direction="row"
+                        spacing={1.2}
+                        alignItems="flex-start"
+                      >
                         <Badge
                           color="secondary"
                           badgeContent={unreadCount}
                           max={99}
                           invisible={!unreadCount}
-                          sx={{ "& .MuiBadge-badge": { bgcolor: PURPLE, color: "#fff", fontWeight: 700, fontSize: 10 } }}
+                          sx={{
+                            "& .MuiBadge-badge": {
+                              bgcolor: PURPLE,
+                              color: "#fff",
+                              fontWeight: 700,
+                              fontSize: 10,
+                            },
+                          }}
                         >
                           <Avatar
-                            src={task.mode === "GROUP" ? undefined : getUserAvatar(partnerUser)}
+                            src={
+                              task.mode === "GROUP"
+                                ? undefined
+                                : getUserAvatar(partnerUser)
+                            }
                             sx={{
-                              width: 42, height: 42, borderRadius: 2.2,
-                              bgcolor: task.mode === "GROUP" ? "#EEE7FF" : colorFor(getId(task.assignedTo) || task._id),
-                              color: task.mode === "GROUP" ? PURPLE_DARK : "#fff",
-                              fontSize: 15, fontWeight: 800,
+                              width: 42,
+                              height: 42,
+                              borderRadius: 2.2,
+                              bgcolor:
+                                task.mode === "GROUP"
+                                  ? "#EEE7FF"
+                                  : colorFor(
+                                      getId(task.assignedTo) || task._id,
+                                    ),
+                              color:
+                                task.mode === "GROUP" ? PURPLE_DARK : "#fff",
+                              fontSize: 15,
+                              fontWeight: 800,
                             }}
                           >
-                            {task.mode === "GROUP" ? <Groups fontSize="small" /> : getInitial(partner)}
+                            {task.mode === "GROUP" ? (
+                              <Groups fontSize="small" />
+                            ) : (
+                              getInitial(partner)
+                            )}
                           </Avatar>
                         </Badge>
 
                         <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Stack direction="row" alignItems="center" spacing={0.6}>
-                            {task.pinned && <PushPin sx={{ fontSize: 13, color: PURPLE, transform: "rotate(45deg)" }} />}
+                          <Stack
+                            direction="row"
+                            alignItems="center"
+                            spacing={0.6}
+                          >
+                            {task.pinned && (
+                              <PushPin
+                                sx={{
+                                  fontSize: 13,
+                                  color: PURPLE,
+                                  transform: "rotate(45deg)",
+                                }}
+                              />
+                            )}
 
                             {task.priority && task.priority !== "medium" && (
                               <Tooltip title={`${pMeta.label} priority`}>
-                                <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: pMeta.color, flexShrink: 0 }} />
+                                <Box
+                                  sx={{
+                                    width: 7,
+                                    height: 7,
+                                    borderRadius: "50%",
+                                    bgcolor: pMeta.color,
+                                    flexShrink: 0,
+                                  }}
+                                />
                               </Tooltip>
                             )}
 
                             <Typography
                               sx={{
-                                fontWeight: 800, fontSize: 14, color: "#27212F",
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1,
+                                fontWeight: 800,
+                                fontSize: 14,
+                                color: "#27212F",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                flex: 1,
                               }}
                             >
                               {task.title}
                             </Typography>
 
                             {task.lastMessageAt && (
-                              <Typography sx={{ fontSize: 10, color: "#A39CAF", flexShrink: 0 }}>
+                              <Typography
+                                sx={{
+                                  fontSize: 10,
+                                  color: "#A39CAF",
+                                  flexShrink: 0,
+                                }}
+                              >
                                 {formatTime(task.lastMessageAt)}
                               </Typography>
                             )}
@@ -1751,45 +2125,75 @@ function TasksInner() {
 
                           <Typography
                             sx={{
-                              mt: 0.2, fontSize: 11.5, fontWeight: 600, color: PURPLE_DARK,
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              mt: 0.2,
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              color: PURPLE_DARK,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            {task.mode === "GROUP" ? `${(task.participants || []).length} members` : partner}
+                            {task.mode === "GROUP"
+                              ? `${(task.participants || []).length} members`
+                              : partner}
                           </Typography>
 
                           {task.lastMessageText ? (
                             <Typography
                               sx={{
-                                mt: 0.4, fontSize: 11.5, color: "#8B8596",
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                mt: 0.4,
+                                fontSize: 11.5,
+                                color: "#8B8596",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
                               }}
                             >
-                              {task.lastMessageSenderName ? `${task.lastMessageSenderName}: ` : ""}
+                              {task.lastMessageSenderName
+                                ? `${task.lastMessageSenderName}: `
+                                : ""}
                               {task.lastMessageText}
                             </Typography>
                           ) : task.description ? (
                             <Typography
                               sx={{
-                                mt: 0.4, fontSize: 11.5, color: "#98929F",
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                mt: 0.4,
+                                fontSize: 11.5,
+                                color: "#98929F",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               {task.description}
                             </Typography>
                           ) : null}
 
-                          <Stack direction="row" spacing={0.6} alignItems="center" sx={{ mt: 0.9, flexWrap: "wrap", rowGap: 0.5 }}>
+                          <Stack
+                            direction="row"
+                            spacing={0.6}
+                            alignItems="center"
+                            sx={{ mt: 0.9, flexWrap: "wrap", rowGap: 0.5 }}
+                          >
                             {statusChip(task.status)}
 
                             {totalCount > 0 && (
                               <Chip
                                 size="small"
-                                icon={<PlaylistAddCheck sx={{ fontSize: 13 }} />}
+                                icon={
+                                  <PlaylistAddCheck sx={{ fontSize: 13 }} />
+                                }
                                 label={`${doneCount}/${totalCount}`}
                                 sx={{
-                                  height: 22, fontSize: 10, fontWeight: 700, borderRadius: 1.5,
-                                  bgcolor: doneCount === totalCount ? "#E8F7EE" : "#F5F1FB",
+                                  height: 22,
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  borderRadius: 1.5,
+                                  bgcolor:
+                                    doneCount === totalCount
+                                      ? "#E8F7EE"
+                                      : "#F5F1FB",
                                 }}
                               />
                             )}
@@ -1798,17 +2202,28 @@ function TasksInner() {
                               <Chip
                                 size="small"
                                 label={formatDate(task.dueDate)}
-                                sx={{ height: 22, fontSize: 10, fontWeight: 600, borderRadius: 1.5 }}
+                                sx={{
+                                  height: 22,
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  borderRadius: 1.5,
+                                }}
                               />
                             )}
                           </Stack>
                         </Box>
 
-                        <IconButton size="small" onClick={(event) => togglePin(task, event)} sx={{ p: 0.5 }}>
+                        <IconButton
+                          size="small"
+                          onClick={(event) => togglePin(task, event)}
+                          sx={{ p: 0.5 }}
+                        >
                           {task.pinned ? (
                             <PushPin sx={{ fontSize: 16, color: PURPLE }} />
                           ) : (
-                            <PushPinOutlined sx={{ fontSize: 16, color: "#C3BCCE" }} />
+                            <PushPinOutlined
+                              sx={{ fontSize: 16, color: "#C3BCCE" }}
+                            />
                           )}
                         </IconButton>
                       </Stack>
@@ -1825,7 +2240,8 @@ function TasksInner() {
             <Paper
               elevation={0}
               sx={{
-                display: "flex", flexDirection: "column",
+                display: "flex",
+                flexDirection: "column",
                 position: { xs: "fixed", md: "relative" },
                 inset: { xs: 0, md: "auto" },
                 width: { xs: "100%", md: "auto" },
@@ -1833,35 +2249,70 @@ function TasksInner() {
                 zIndex: { xs: 1300, md: "auto" },
                 borderRadius: { xs: 0, md: 3 },
                 border: { xs: "none", md: `1px solid ${chatBorderColor}` },
-                bgcolor: chatBg, overflow: "hidden",
+                bgcolor: chatBg,
+                overflow: "hidden",
                 transition: "background-color 0.2s ease",
               }}
             >
               {/* ----- chat header ----- */}
 
-              <Box sx={{ px: { xs: 1, sm: 2 }, py: { xs: 0.9, sm: 1.3 }, borderBottom: `1px solid ${chatBorderColor}`, bgcolor: chatSurfaceBg, flexShrink: 0 }}>
+              <Box
+                sx={{
+                  px: { xs: 1, sm: 2 },
+                  py: { xs: 0.9, sm: 1.3 },
+                  borderBottom: `1px solid ${chatBorderColor}`,
+                  bgcolor: chatSurfaceBg,
+                  flexShrink: 0,
+                }}
+              >
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <IconButton
                     onClick={closeTask}
-                    sx={{ display: { xs: "flex", md: "none" }, width: 38, height: 38, color: chatDarkMode ? "#EDE9F7" : "#332D3A" }}
+                    sx={{
+                      display: { xs: "flex", md: "none" },
+                      width: 38,
+                      height: 38,
+                      color: chatDarkMode ? "#EDE9F7" : "#332D3A",
+                    }}
                   >
                     <ArrowBack />
                   </IconButton>
 
                   {selectedTask.mode === "GROUP" ? (
-                    <AvatarGroup max={3} sx={{ "& .MuiAvatar-root": { width: 34, height: 34, fontSize: 13, fontWeight: 700 } }}>
+                    <AvatarGroup
+                      max={3}
+                      sx={{
+                        "& .MuiAvatar-root": {
+                          width: 34,
+                          height: 34,
+                          fontSize: 13,
+                          fontWeight: 700,
+                        },
+                      }}
+                    >
                       {(selectedTask.participants || []).map((person) => (
-                        <Avatar key={person._id} src={getUserAvatar(person)} sx={{ bgcolor: colorFor(person._id) }}>
+                        <Avatar
+                          key={person._id}
+                          src={getUserAvatar(person)}
+                          sx={{ bgcolor: colorFor(person._id) }}
+                        >
                           {getInitial(person)}
                         </Avatar>
                       ))}
                     </AvatarGroup>
                   ) : (
                     <Avatar
-                      src={getUserAvatar(getChatPartnerUser(selectedTask, myId))}
+                      src={getUserAvatar(
+                        getChatPartnerUser(selectedTask, myId),
+                      )}
                       sx={{
-                        width: 40, height: 40, borderRadius: 2.2, fontWeight: 800,
-                        bgcolor: colorFor(getId(selectedTask.assignedTo) || selectedTask._id),
+                        width: 40,
+                        height: 40,
+                        borderRadius: 2.2,
+                        fontWeight: 800,
+                        bgcolor: colorFor(
+                          getId(selectedTask.assignedTo) || selectedTask._id,
+                        ),
                       }}
                     >
                       {getInitial(chatTitle)}
@@ -1871,8 +2322,12 @@ function TasksInner() {
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography
                       sx={{
-                        fontWeight: 800, fontSize: 14.5, color: chatHeaderText,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        fontWeight: 800,
+                        fontSize: 14.5,
+                        color: chatHeaderText,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {chatTitle}
@@ -1880,9 +2335,12 @@ function TasksInner() {
 
                     <Typography
                       sx={{
-                        color: typingUser ? PURPLE : chatSubText, fontSize: 11,
+                        color: typingUser ? PURPLE : chatSubText,
+                        fontSize: 11,
                         fontStyle: typingUser ? "italic" : "normal",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {typingUser
@@ -1898,21 +2356,41 @@ function TasksInner() {
                   {/* NEW: chat settings — wallpaper + dark mode. */}
                   <Tooltip title="Chat settings">
                     <IconButton
-                      onClick={(event) => setChatSettingsAnchor(event.currentTarget)}
+                      onClick={(event) =>
+                        setChatSettingsAnchor(event.currentTarget)
+                      }
                       sx={{ color: chatDarkMode ? "#CFC7E6" : "#A9A2B5" }}
                     >
                       <SettingsRounded fontSize="small" />
                     </IconButton>
                   </Tooltip>
 
-                  <Tooltip title={selectedTask.pinned ? "Unpin chat" : "Pin chat"}>
-                    <IconButton onClick={(event) => togglePin(selectedTask, event)} sx={{ color: selectedTask.pinned ? PURPLE : (chatDarkMode ? "#CFC7E6" : "#A9A2B5") }}>
-                      {selectedTask.pinned ? <PushPin fontSize="small" /> : <PushPinOutlined fontSize="small" />}
+                  <Tooltip
+                    title={selectedTask.pinned ? "Unpin chat" : "Pin chat"}
+                  >
+                    <IconButton
+                      onClick={(event) => togglePin(selectedTask, event)}
+                      sx={{
+                        color: selectedTask.pinned
+                          ? PURPLE
+                          : chatDarkMode
+                            ? "#CFC7E6"
+                            : "#A9A2B5",
+                      }}
+                    >
+                      {selectedTask.pinned ? (
+                        <PushPin fontSize="small" />
+                      ) : (
+                        <PushPinOutlined fontSize="small" />
+                      )}
                     </IconButton>
                   </Tooltip>
 
                   <Tooltip title="Delete task">
-                    <IconButton onClick={() => setDeleteDialogOpen(true)} sx={{ color: "#B42318" }}>
+                    <IconButton
+                      onClick={() => setDeleteDialogOpen(true)}
+                      sx={{ color: "#B42318" }}
+                    >
                       <Delete fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -1922,21 +2400,46 @@ function TasksInner() {
                   <FormControl size="small" sx={{ flex: 1 }}>
                     <Select
                       value={selectedTask.status || "pending"}
-                      onChange={(event) => updateTaskStatus(selectedTask._id, event.target.value)}
-                      sx={{ borderRadius: 2, fontSize: 12, fontWeight: 700, bgcolor: chatDarkMode ? "#241c3d" : "transparent", color: chatDarkMode ? "#F1EDFF" : "inherit" }}
+                      onChange={(event) =>
+                        updateTaskStatus(selectedTask._id, event.target.value)
+                      }
+                      sx={{
+                        borderRadius: 2,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        bgcolor: chatDarkMode ? "#241c3d" : "transparent",
+                        color: chatDarkMode ? "#F1EDFF" : "inherit",
+                      }}
                     >
                       {STATUS_OPTIONS.map((item) => (
-                        <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                        <MenuItem key={item.value} value={item.value}>
+                          {item.label}
+                        </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
 
-                  <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: chatDarkMode ? "#241c3d" : "#F8F6FB", flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: 9.5, color: chatSubText }}>Due date</Typography>
+                  <Box
+                    sx={{
+                      px: 1.4,
+                      py: 0.7,
+                      borderRadius: 2,
+                      bgcolor: chatDarkMode ? "#241c3d" : "#F8F6FB",
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <Typography sx={{ fontSize: 9.5, color: chatSubText }}>
+                      Due date
+                    </Typography>
                     <Typography
                       sx={{
-                        fontSize: 12, fontWeight: 700, color: chatDarkMode ? "#F1EDFF" : "#38313F",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: chatDarkMode ? "#F1EDFF" : "#38313F",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       {formatDate(selectedTask.dueDate)}
@@ -1944,9 +2447,26 @@ function TasksInner() {
                   </Box>
 
                   {selectedTask.priority && (
-                    <Box sx={{ px: 1.4, py: 0.7, borderRadius: 2, bgcolor: chatDarkMode ? "#241c3d" : "#F8F6FB", minWidth: 70 }}>
-                      <Typography sx={{ fontSize: 9.5, color: chatSubText }}>Priority</Typography>
-                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: priorityMeta(selectedTask.priority).color, textTransform: "capitalize" }}>
+                    <Box
+                      sx={{
+                        px: 1.4,
+                        py: 0.7,
+                        borderRadius: 2,
+                        bgcolor: chatDarkMode ? "#241c3d" : "#F8F6FB",
+                        minWidth: 70,
+                      }}
+                    >
+                      <Typography sx={{ fontSize: 9.5, color: chatSubText }}>
+                        Priority
+                      </Typography>
+                      <Typography
+                        sx={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: priorityMeta(selectedTask.priority).color,
+                          textTransform: "capitalize",
+                        }}
+                      >
                         {selectedTask.priority}
                       </Typography>
                     </Box>
@@ -1961,19 +2481,48 @@ function TasksInner() {
                 open={Boolean(chatSettingsAnchor)}
                 onClose={() => setChatSettingsAnchor(null)}
               >
-                <MenuItem onClick={toggleChatDarkMode} sx={{ fontSize: 13, fontWeight: 600 }}>
-                  {chatDarkMode ? "Switch to light chat" : "Switch to dark chat"}
+                <MenuItem
+                  onClick={toggleChatDarkMode}
+                  sx={{ fontSize: 13, fontWeight: 600 }}
+                >
+                  {chatDarkMode
+                    ? "Switch to light chat"
+                    : "Switch to dark chat"}
                 </MenuItem>
 
                 <Divider />
 
-                <Typography sx={{ px: 2, pt: 1, pb: 0.5, fontSize: 10.5, fontWeight: 800, color: "#948DA0" }}>
+                <Typography
+                  sx={{
+                    px: 2,
+                    pt: 1,
+                    pb: 0.5,
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    color: "#948DA0",
+                  }}
+                >
                   WALLPAPER
                 </Typography>
 
                 {Object.entries(WALLPAPERS).map(([key, w]) => (
-                  <MenuItem key={key} selected={wallpaper === key} onClick={() => pickWallpaper(key)} sx={{ fontSize: 13 }}>
-                    <Box sx={{ width: 18, height: 18, borderRadius: 1, background: w.bg, mr: 1.2, border: "1px solid #ddd", flexShrink: 0 }} />
+                  <MenuItem
+                    key={key}
+                    selected={wallpaper === key}
+                    onClick={() => pickWallpaper(key)}
+                    sx={{ fontSize: 13 }}
+                  >
+                    <Box
+                      sx={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 1,
+                        background: w.bg,
+                        mr: 1.2,
+                        border: "1px solid #ddd",
+                        flexShrink: 0,
+                      }}
+                    />
                     {w.label}
                   </MenuItem>
                 ))}
@@ -1984,7 +2533,9 @@ function TasksInner() {
                     selected={wallpaper === "custom"}
                     onClick={() => {
                       setWallpaper("custom");
-                      try { window.localStorage.setItem("chatWallpaper", "custom"); } catch {}
+                      try {
+                        window.localStorage.setItem("chatWallpaper", "custom");
+                      } catch {}
                       setChatSettingsAnchor(null);
                     }}
                     sx={{ fontSize: 13 }}
@@ -1992,19 +2543,35 @@ function TasksInner() {
                     <Box
                       component="img"
                       src={customWallpaperUrl}
-                      sx={{ width: 18, height: 18, borderRadius: 1, mr: 1.2, border: "1px solid #ddd", flexShrink: 0, objectFit: "cover" }}
+                      sx={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 1,
+                        mr: 1.2,
+                        border: "1px solid #ddd",
+                        flexShrink: 0,
+                        objectFit: "cover",
+                      }}
                     />
                     My photo
                   </MenuItem>
                 )}
 
-                <MenuItem onClick={pickCustomWallpaper} sx={{ fontSize: 13, color: PURPLE_DARK, fontWeight: 700 }}>
+                <MenuItem
+                  onClick={pickCustomWallpaper}
+                  sx={{ fontSize: 13, color: PURPLE_DARK, fontWeight: 700 }}
+                >
                   <ImageIcon sx={{ fontSize: 16, mr: 1.2 }} />
-                  {customWallpaperUrl ? "Choose a different photo" : "Choose from gallery"}
+                  {customWallpaperUrl
+                    ? "Choose a different photo"
+                    : "Choose from gallery"}
                 </MenuItem>
 
                 {customWallpaperUrl && (
-                  <MenuItem onClick={removeCustomWallpaper} sx={{ fontSize: 13, color: "#B42318" }}>
+                  <MenuItem
+                    onClick={removeCustomWallpaper}
+                    sx={{ fontSize: 13, color: "#B42318" }}
+                  >
                     <Close sx={{ fontSize: 16, mr: 1.2 }} />
                     Remove my photo wallpaper
                   </MenuItem>
@@ -2038,25 +2605,61 @@ function TasksInner() {
                 ref={chatScrollRef}
                 onScroll={onChatScroll}
                 sx={{
-                  flex: 1, minHeight: 0, overflowY: "auto",
-                  px: { xs: 1, sm: 2 }, py: { xs: 1.2, sm: 1.8 },
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  px: { xs: 1, sm: 2 },
+                  py: { xs: 1.2, sm: 1.8 },
                   background: currentChatBackground,
                   WebkitOverflowScrolling: "touch",
                   "&::-webkit-scrollbar": { width: 5 },
-                  "&::-webkit-scrollbar-thumb": { background: "#D8D1E5", borderRadius: 10 },
+                  "&::-webkit-scrollbar-thumb": {
+                    background: "#D8D1E5",
+                    borderRadius: 10,
+                  },
                 }}
               >
                 {taskLoading ? (
-                  <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320 }}>
+                  <Stack
+                    alignItems="center"
+                    justifyContent="center"
+                    sx={{ minHeight: 320 }}
+                  >
                     <CircularProgress size={25} sx={{ color: PURPLE }} />
                   </Stack>
                 ) : !selectedTask.messages?.length ? (
-                  <Stack alignItems="center" justifyContent="center" sx={{ minHeight: 320, textAlign: "center" }}>
-                    <Avatar sx={{ width: 56, height: 56, bgcolor: "#EEE7FF", color: PURPLE, mb: 1.5 }}>
+                  <Stack
+                    alignItems="center"
+                    justifyContent="center"
+                    sx={{ minHeight: 320, textAlign: "center" }}
+                  >
+                    <Avatar
+                      sx={{
+                        width: 56,
+                        height: 56,
+                        bgcolor: "#EEE7FF",
+                        color: PURPLE,
+                        mb: 1.5,
+                      }}
+                    >
                       <Send />
                     </Avatar>
-                    <Typography sx={{ fontWeight: 800, fontSize: 15, color: chatDarkMode ? "#F1EDFF" : "inherit" }}>No messages yet</Typography>
-                    <Typography sx={{ color: chatDarkMode ? "#B8AFCF" : "#8D8797", fontSize: 12, mt: 0.5 }}>
+                    <Typography
+                      sx={{
+                        fontWeight: 800,
+                        fontSize: 15,
+                        color: chatDarkMode ? "#F1EDFF" : "inherit",
+                      }}
+                    >
+                      No messages yet
+                    </Typography>
+                    <Typography
+                      sx={{
+                        color: chatDarkMode ? "#B8AFCF" : "#8D8797",
+                        fontSize: 12,
+                        mt: 0.5,
+                      }}
+                    >
                       Start the conversation with {chatTitle}.
                     </Typography>
                   </Stack>
@@ -2072,8 +2675,19 @@ function TasksInner() {
                           size="small"
                           onClick={loadOlderMessages}
                           disabled={loadingOlder}
-                          startIcon={loadingOlder ? <CircularProgress size={13} /> : null}
-                          sx={{ textTransform: "none", fontSize: 11.5, fontWeight: 700, color: PURPLE_DARK, borderRadius: 5, bgcolor: chatDarkMode ? "rgba(124,58,237,0.15)" : "transparent" }}
+                          startIcon={
+                            loadingOlder ? <CircularProgress size={13} /> : null
+                          }
+                          sx={{
+                            textTransform: "none",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            color: PURPLE_DARK,
+                            borderRadius: 5,
+                            bgcolor: chatDarkMode
+                              ? "rgba(124,58,237,0.15)"
+                              : "transparent",
+                          }}
                         >
                           {loadingOlder ? "Loading..." : "Load older messages"}
                         </Button>
@@ -2085,19 +2699,24 @@ function TasksInner() {
                       const previous = selectedTask.messages[index - 1];
                       const showDay =
                         !previous ||
-                        dayLabel(previous.createdAt) !== dayLabel(message.createdAt);
+                        dayLabel(previous.createdAt) !==
+                          dayLabel(message.createdAt);
 
                       const showSender =
                         selectedTask.mode === "GROUP" &&
                         !isMine &&
-                        (!previous || !sameId(previous.sender, message.sender) || showDay);
+                        (!previous ||
+                          !sameId(previous.sender, message.sender) ||
+                          showDay);
 
                       const isRemoved = message.deleted || message.hiddenForMe;
 
                       const canEdit =
                         isMine &&
                         !isRemoved &&
-                        (Date.now() - new Date(message.createdAt).getTime()) / 36e5 < 24;
+                        (Date.now() - new Date(message.createdAt).getTime()) /
+                          36e5 <
+                          24;
 
                       const hasCaption =
                         message.text && message.text !== "📷 Photo";
@@ -2109,17 +2728,40 @@ function TasksInner() {
                               <Chip
                                 size="small"
                                 label={dayLabel(message.createdAt)}
-                                sx={{ height: 21, fontSize: 10, fontWeight: 700, bgcolor: chatDarkMode ? "rgba(255,255,255,0.08)" : "#EFEBF7", color: chatDarkMode ? "#D7D0EA" : "#6F6880" }}
+                                sx={{
+                                  height: 21,
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  bgcolor: chatDarkMode
+                                    ? "rgba(255,255,255,0.08)"
+                                    : "#EFEBF7",
+                                  color: chatDarkMode ? "#D7D0EA" : "#6F6880",
+                                }}
                               />
                             </Stack>
                           )}
 
-                          <Box sx={{ display: "flex", justifyContent: isMine ? "flex-end" : "flex-start" }}>
-                            <Box sx={{ maxWidth: { xs: "86%", sm: "72%" }, minWidth: 0 }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: isMine
+                                ? "flex-end"
+                                : "flex-start",
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                maxWidth: { xs: "86%", sm: "72%" },
+                                minWidth: 0,
+                              }}
+                            >
                               {showSender && (
                                 <Typography
                                   sx={{
-                                    fontSize: 10.5, fontWeight: 800, ml: 1, mb: 0.3,
+                                    fontSize: 10.5,
+                                    fontWeight: 800,
+                                    ml: 1,
+                                    mb: 0.3,
                                     color: colorFor(getId(message.sender)),
                                   }}
                                 >
@@ -2132,19 +2774,44 @@ function TasksInner() {
                                 onContextMenu={(event) => {
                                   if (isRemoved) return;
                                   event.preventDefault();
-                                  setMessageMenu({ anchor: event.currentTarget, message });
+                                  setMessageMenu({
+                                    anchor: event.currentTarget,
+                                    message,
+                                  });
                                 }}
                                 sx={{
                                   p: message.photoUrl && !isRemoved ? 0.6 : 1.1,
-                                  borderRadius: isMine ? "16px 16px 5px 16px" : "16px 16px 16px 5px",
-                                  bgcolor: isRemoved ? (chatDarkMode ? "#241c3d" : "#F3F1F7") : isMine ? PURPLE : bubbleOtherBg,
-                                  color: isRemoved ? (chatDarkMode ? "#8A82A3" : "#9A94A3") : isMine ? "#fff" : bubbleOtherColor,
-                                  border: isMine || isRemoved ? "none" : bubbleOtherBorder,
+                                  borderRadius: isMine
+                                    ? "16px 16px 5px 16px"
+                                    : "16px 16px 16px 5px",
+                                  bgcolor: isRemoved
+                                    ? chatDarkMode
+                                      ? "#241c3d"
+                                      : "#F3F1F7"
+                                    : isMine
+                                      ? PURPLE
+                                      : bubbleOtherBg,
+                                  color: isRemoved
+                                    ? chatDarkMode
+                                      ? "#8A82A3"
+                                      : "#9A94A3"
+                                    : isMine
+                                      ? "#fff"
+                                      : bubbleOtherColor,
+                                  border:
+                                    isMine || isRemoved
+                                      ? "none"
+                                      : bubbleOtherBorder,
                                   boxShadow: "0 2px 8px rgba(30,20,50,.04)",
                                 }}
                               >
                                 {message.photoUrl && !isRemoved && (
-                                  <Box sx={{ position: "relative", "&:hover .photo-actions": { opacity: 1 } }}>
+                                  <Box
+                                    sx={{
+                                      position: "relative",
+                                      "&:hover .photo-actions": { opacity: 1 },
+                                    }}
+                                  >
                                     <Box
                                       component="img"
                                       src={message.photoUrl}
@@ -2152,9 +2819,13 @@ function TasksInner() {
                                       loading="lazy"
                                       onClick={() => setViewerPhoto(message)}
                                       sx={{
-                                        display: "block", width: "100%", maxWidth: 280,
-                                        maxHeight: 300, objectFit: "cover",
-                                        borderRadius: 2, cursor: "pointer",
+                                        display: "block",
+                                        width: "100%",
+                                        maxWidth: 280,
+                                        maxHeight: 300,
+                                        objectFit: "cover",
+                                        borderRadius: 2,
+                                        cursor: "pointer",
                                       }}
                                     />
 
@@ -2163,8 +2834,11 @@ function TasksInner() {
                                       direction="row"
                                       spacing={0.5}
                                       sx={{
-                                        position: "absolute", top: 6, right: 6,
-                                        opacity: { xs: 1, md: 0 }, transition: "0.2s",
+                                        position: "absolute",
+                                        top: 6,
+                                        right: 6,
+                                        opacity: { xs: 1, md: 0 },
+                                        transition: "0.2s",
                                       }}
                                     >
                                       <Tooltip title="Download">
@@ -2173,13 +2847,17 @@ function TasksInner() {
                                           onClick={() =>
                                             downloadImage(
                                               message.photoUrl,
-                                              `task-photo-${message._id}.jpg`
+                                              `task-photo-${message._id}.jpg`,
                                             )
                                           }
                                           sx={{
-                                            width: 27, height: 27,
-                                            bgcolor: "rgba(20,12,35,.55)", color: "#fff",
-                                            "&:hover": { bgcolor: "rgba(20,12,35,.75)" },
+                                            width: 27,
+                                            height: 27,
+                                            bgcolor: "rgba(20,12,35,.55)",
+                                            color: "#fff",
+                                            "&:hover": {
+                                              bgcolor: "rgba(20,12,35,.75)",
+                                            },
                                           }}
                                         >
                                           <Download sx={{ fontSize: 15 }} />
@@ -2190,11 +2868,20 @@ function TasksInner() {
                                         <Tooltip title="Delete for everyone">
                                           <IconButton
                                             size="small"
-                                            onClick={() => deleteMessageById(message, "everyone")}
+                                            onClick={() =>
+                                              deleteMessageById(
+                                                message,
+                                                "everyone",
+                                              )
+                                            }
                                             sx={{
-                                              width: 27, height: 27,
-                                              bgcolor: "rgba(20,12,35,.55)", color: "#fff",
-                                              "&:hover": { bgcolor: "rgba(180,35,24,.85)" },
+                                              width: 27,
+                                              height: 27,
+                                              bgcolor: "rgba(20,12,35,.55)",
+                                              color: "#fff",
+                                              "&:hover": {
+                                                bgcolor: "rgba(180,35,24,.85)",
+                                              },
                                             }}
                                           >
                                             <Delete sx={{ fontSize: 15 }} />
@@ -2205,21 +2892,33 @@ function TasksInner() {
                                   </Box>
                                 )}
 
-                                {(hasCaption || isRemoved || !message.photoUrl) && (
+                                {(hasCaption ||
+                                  isRemoved ||
+                                  !message.photoUrl) && (
                                   <Typography
                                     sx={{
-                                      fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap",
+                                      fontSize: 13,
+                                      lineHeight: 1.5,
+                                      whiteSpace: "pre-wrap",
                                       wordBreak: "break-word",
-                                      fontStyle: isRemoved ? "italic" : "normal",
-                                      px: message.photoUrl && !isRemoved ? 0.6 : 0,
-                                      pt: message.photoUrl && !isRemoved ? 0.6 : 0,
+                                      fontStyle: isRemoved
+                                        ? "italic"
+                                        : "normal",
+                                      px:
+                                        message.photoUrl && !isRemoved
+                                          ? 0.6
+                                          : 0,
+                                      pt:
+                                        message.photoUrl && !isRemoved
+                                          ? 0.6
+                                          : 0,
                                     }}
                                   >
                                     {message.deleted
                                       ? "This message was deleted"
                                       : message.hiddenForMe
-                                      ? "You deleted this message"
-                                      : message.text}
+                                        ? "You deleted this message"
+                                        : message.text}
                                   </Typography>
                                 )}
 
@@ -2228,31 +2927,56 @@ function TasksInner() {
                                   alignItems="center"
                                   justifyContent="flex-end"
                                   spacing={0.4}
-                                  sx={{ mt: 0.35, px: message.photoUrl && !isRemoved ? 0.6 : 0, pb: message.photoUrl && !isRemoved ? 0.3 : 0 }}
+                                  sx={{
+                                    mt: 0.35,
+                                    px:
+                                      message.photoUrl && !isRemoved ? 0.6 : 0,
+                                    pb:
+                                      message.photoUrl && !isRemoved ? 0.3 : 0,
+                                  }}
                                 >
                                   {message.editedAt && !isRemoved && (
-                                    <Typography sx={{ fontSize: 9, opacity: 0.7 }}>edited</Typography>
+                                    <Typography
+                                      sx={{ fontSize: 9, opacity: 0.7 }}
+                                    >
+                                      edited
+                                    </Typography>
                                   )}
 
                                   {!isRemoved && (
-                                    <Typography sx={{ fontSize: 9, opacity: 0.65 }}>
+                                    <Typography
+                                      sx={{ fontSize: 9, opacity: 0.65 }}
+                                    >
                                       {formatTime(message.createdAt)}
                                     </Typography>
                                   )}
 
                                   {isMine && !isRemoved && (
-                                    <MessageTicks message={message} memberIds={memberIds} myId={myId} />
+                                    <MessageTicks
+                                      message={message}
+                                      memberIds={memberIds}
+                                      myId={myId}
+                                    />
                                   )}
 
                                   {!isRemoved && (
                                     <IconButton
                                       size="small"
                                       onClick={(event) =>
-                                        setMessageMenu({ anchor: event.currentTarget, message })
+                                        setMessageMenu({
+                                          anchor: event.currentTarget,
+                                          message,
+                                        })
                                       }
                                       sx={{ p: 0.15, ml: 0.2 }}
                                     >
-                                      <MoreVert sx={{ fontSize: 13, color: isMine ? "#fff" : "#A9A2B5", opacity: 0.75 }} />
+                                      <MoreVert
+                                        sx={{
+                                          fontSize: 13,
+                                          color: isMine ? "#fff" : "#A9A2B5",
+                                          opacity: 0.75,
+                                        }}
+                                      />
                                     </IconButton>
                                   )}
                                 </Stack>
@@ -2274,19 +2998,37 @@ function TasksInner() {
                 sx={{
                   p: { xs: 0.8, sm: 1.2 },
                   pb: { xs: "max(8px, env(safe-area-inset-bottom))", sm: 1.2 },
-                  borderTop: `1px solid ${chatBorderColor}`, bgcolor: chatSurfaceBg, flexShrink: 0,
+                  borderTop: `1px solid ${chatBorderColor}`,
+                  bgcolor: chatSurfaceBg,
+                  flexShrink: 0,
                 }}
               >
                 <Stack direction="row" spacing={0.8} alignItems="flex-end">
-                  <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={sendPhoto} />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={sendPhoto}
+                  />
 
                   <Tooltip title="Send photo (text box becomes the caption)">
                     <IconButton
                       onClick={() => fileInputRef.current?.click()}
                       disabled={sendingMessage}
                       sx={{
-                        width: 40, height: 40, color: PURPLE, bgcolor: chatDarkMode ? "rgba(124,58,237,0.18)" : "#F5F1FF", flexShrink: 0,
-                        "&:hover": { bgcolor: chatDarkMode ? "rgba(124,58,237,0.28)" : "#EDE5FF" },
+                        width: 40,
+                        height: 40,
+                        color: PURPLE,
+                        bgcolor: chatDarkMode
+                          ? "rgba(124,58,237,0.18)"
+                          : "#F5F1FF",
+                        flexShrink: 0,
+                        "&:hover": {
+                          bgcolor: chatDarkMode
+                            ? "rgba(124,58,237,0.28)"
+                            : "#EDE5FF",
+                        },
                       }}
                     >
                       <ImageIcon fontSize="small" />
@@ -2309,7 +3051,10 @@ function TasksInner() {
                     size="small"
                     sx={{
                       "& .MuiOutlinedInput-root": {
-                        borderRadius: 2.5, bgcolor: composerFieldBg, fontSize: 13, py: 0.3,
+                        borderRadius: 2.5,
+                        bgcolor: composerFieldBg,
+                        fontSize: 13,
+                        py: 0.3,
                         color: chatDarkMode ? "#F1EDFF" : "inherit",
                       },
                     }}
@@ -2319,9 +3064,16 @@ function TasksInner() {
                     onClick={sendMessage}
                     disabled={sendingMessage || !messageText.trim()}
                     sx={{
-                      width: 42, height: 42, bgcolor: PURPLE, color: "#fff", flexShrink: 0,
+                      width: 42,
+                      height: 42,
+                      bgcolor: PURPLE,
+                      color: "#fff",
+                      flexShrink: 0,
                       "&:hover": { bgcolor: PURPLE_DARK },
-                      "&.Mui-disabled": { bgcolor: "#E7E2EE", color: "#AAA4B3" },
+                      "&.Mui-disabled": {
+                        bgcolor: "#E7E2EE",
+                        color: "#AAA4B3",
+                      },
                     }}
                   >
                     {sendingMessage ? (
@@ -2347,7 +3099,10 @@ function TasksInner() {
         {messageMenu?.message?.photoUrl && (
           <MenuItem
             onClick={() => {
-              downloadImage(messageMenu.message.photoUrl, `task-photo-${messageMenu.message._id}.jpg`);
+              downloadImage(
+                messageMenu.message.photoUrl,
+                `task-photo-${messageMenu.message._id}.jpg`,
+              );
               setMessageMenu(null);
             }}
             sx={{ fontSize: 13 }}
@@ -2357,13 +3112,22 @@ function TasksInner() {
         )}
 
         {sameId(messageMenu?.message?.sender, myId) &&
-          (Date.now() - new Date(messageMenu?.message?.createdAt || 0).getTime()) / 36e5 < 24 && (
-            <MenuItem onClick={() => startEditMessage(messageMenu.message)} sx={{ fontSize: 13 }}>
+          (Date.now() -
+            new Date(messageMenu?.message?.createdAt || 0).getTime()) /
+            36e5 <
+            24 && (
+            <MenuItem
+              onClick={() => startEditMessage(messageMenu.message)}
+              sx={{ fontSize: 13 }}
+            >
               <Edit sx={{ fontSize: 16, mr: 1 }} /> Edit message
             </MenuItem>
           )}
 
-        <MenuItem onClick={() => deleteMessageById(messageMenu.message, "me")} sx={{ fontSize: 13 }}>
+        <MenuItem
+          onClick={() => deleteMessageById(messageMenu.message, "me")}
+          sx={{ fontSize: 13 }}
+        >
           <Delete sx={{ fontSize: 16, mr: 1 }} /> Delete for me
         </MenuItem>
 
@@ -2395,7 +3159,9 @@ function TasksInner() {
             />
 
             {viewerPhoto.text && viewerPhoto.text !== "📷 Photo" && (
-              <Typography sx={{ color: "#EDE9F7", fontSize: 13, px: 2, pt: 1.5 }}>
+              <Typography
+                sx={{ color: "#EDE9F7", fontSize: 13, px: 2, pt: 1.5 }}
+              >
                 {viewerPhoto.text}
               </Typography>
             )}
@@ -2407,8 +3173,17 @@ function TasksInner() {
 
               <Button
                 startIcon={<Download />}
-                onClick={() => downloadImage(viewerPhoto.photoUrl, `task-photo-${viewerPhoto._id}.jpg`)}
-                sx={{ textTransform: "none", fontWeight: 700, color: "#DCD3F5" }}
+                onClick={() =>
+                  downloadImage(
+                    viewerPhoto.photoUrl,
+                    `task-photo-${viewerPhoto._id}.jpg`,
+                  )
+                }
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 700,
+                  color: "#DCD3F5",
+                }}
               >
                 Download
               </Button>
@@ -2420,7 +3195,11 @@ function TasksInner() {
                     deleteMessageById(viewerPhoto, "everyone");
                     setViewerPhoto(null);
                   }}
-                  sx={{ textTransform: "none", fontWeight: 700, color: "#FCA5A5" }}
+                  sx={{
+                    textTransform: "none",
+                    fontWeight: 700,
+                    color: "#FCA5A5",
+                  }}
                 >
                   Delete
                 </Button>
@@ -2444,7 +3223,9 @@ function TasksInner() {
         maxWidth="sm"
         PaperProps={{ sx: { borderRadius: 3, m: { xs: 1.5, sm: 2 } } }}
       >
-        <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Create New Task</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
+          Create New Task
+        </DialogTitle>
 
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
@@ -2466,7 +3247,14 @@ function TasksInner() {
             />
 
             <FormControl fullWidth>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
+              <Typography
+                sx={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  mb: 0.7,
+                  color: "#57505F",
+                }}
+              >
                 Assignment type
               </Typography>
 
@@ -2482,8 +3270,12 @@ function TasksInner() {
                 {MODE_OPTIONS.map((item) => (
                   <MenuItem key={item.value} value={item.value}>
                     <Box>
-                      <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{item.label}</Typography>
-                      <Typography sx={{ fontSize: 10.5, color: "#918A9A" }}>{item.description}</Typography>
+                      <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
+                        {item.label}
+                      </Typography>
+                      <Typography sx={{ fontSize: 10.5, color: "#918A9A" }}>
+                        {item.description}
+                      </Typography>
                     </Box>
                   </MenuItem>
                 ))}
@@ -2492,7 +3284,14 @@ function TasksInner() {
 
             {mode === "INDIVIDUAL" ? (
               <FormControl fullWidth>
-                <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    mb: 0.7,
+                    color: "#57505F",
+                  }}
+                >
                   Assign to
                 </Typography>
 
@@ -2508,14 +3307,28 @@ function TasksInner() {
                   {users.map((member) => (
                     <MenuItem key={member._id} value={member._id}>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar src={getUserAvatar(member)} sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
+                        <Avatar
+                          src={getUserAvatar(member)}
+                          sx={{
+                            width: 27,
+                            height: 27,
+                            fontSize: 11,
+                            bgcolor: colorFor(member._id),
+                          }}
+                        >
                           {getInitial(member)}
                         </Avatar>
                         <Box>
                           <Typography sx={{ fontSize: 13, fontWeight: 700 }}>
                             {getUserName(member)}
                           </Typography>
-                          <Typography sx={{ fontSize: 10, color: "#8E8797", textTransform: "capitalize" }}>
+                          <Typography
+                            sx={{
+                              fontSize: 10,
+                              color: "#8E8797",
+                              textTransform: "capitalize",
+                            }}
+                          >
                             {member.role}
                           </Typography>
                         </Box>
@@ -2526,7 +3339,14 @@ function TasksInner() {
               </FormControl>
             ) : (
               <FormControl fullWidth>
-                <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    mb: 0.7,
+                    color: "#57505F",
+                  }}
+                >
                   Select people
                 </Typography>
 
@@ -2537,7 +3357,7 @@ function TasksInner() {
                     setAssignedToList(
                       typeof event.target.value === "string"
                         ? event.target.value.split(",")
-                        : event.target.value
+                        : event.target.value,
                     )
                   }
                   displayEmpty
@@ -2553,12 +3373,19 @@ function TasksInner() {
                     }
 
                     return (
-                      <Stack direction="row" spacing={0.5} flexWrap="wrap" rowGap={0.5}>
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        flexWrap="wrap"
+                        rowGap={0.5}
+                      >
                         {selected.map((id) => (
                           <Chip
                             key={id}
                             size="small"
-                            label={getUserName(users.find((item) => sameId(item._id, id)))}
+                            label={getUserName(
+                              users.find((item) => sameId(item._id, id)),
+                            )}
                             sx={{ borderRadius: 1.5 }}
                           />
                         ))}
@@ -2569,7 +3396,15 @@ function TasksInner() {
                   {users.map((member) => (
                     <MenuItem key={member._id} value={member._id}>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar src={getUserAvatar(member)} sx={{ width: 27, height: 27, fontSize: 11, bgcolor: colorFor(member._id) }}>
+                        <Avatar
+                          src={getUserAvatar(member)}
+                          sx={{
+                            width: 27,
+                            height: 27,
+                            fontSize: 11,
+                            bgcolor: colorFor(member._id),
+                          }}
+                        >
                           {getInitial(member)}
                         </Avatar>
                         <Typography sx={{ fontSize: 13, fontWeight: 600 }}>
@@ -2593,7 +3428,14 @@ function TasksInner() {
               />
 
               <FormControl fullWidth>
-                <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.7, color: "#57505F" }}>
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    mb: 0.7,
+                    color: "#57505F",
+                  }}
+                >
                   Priority
                 </Typography>
                 <Select
@@ -2604,8 +3446,17 @@ function TasksInner() {
                   {PRIORITY_OPTIONS.map((option) => (
                     <MenuItem key={option.value} value={option.value}>
                       <Stack direction="row" alignItems="center" spacing={0.8}>
-                        <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: option.color }} />
-                        <Typography sx={{ fontSize: 13 }}>{option.label}</Typography>
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            bgcolor: option.color,
+                          }}
+                        />
+                        <Typography sx={{ fontSize: 13 }}>
+                          {option.label}
+                        </Typography>
                       </Stack>
                     </MenuItem>
                   ))}
@@ -2615,19 +3466,42 @@ function TasksInner() {
 
             {/* checklist builder */}
 
-            <Paper elevation={0} sx={{ p: 1.5, borderRadius: 2.5, border: "1px solid #EAE5F2", bgcolor: "#FBFAFD" }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 800, mb: 0.3 }}>Checklist</Typography>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 1.5,
+                borderRadius: 2.5,
+                border: "1px solid #EAE5F2",
+                bgcolor: "#FBFAFD",
+              }}
+            >
+              <Typography sx={{ fontSize: 13, fontWeight: 800, mb: 0.3 }}>
+                Checklist
+              </Typography>
               <Typography sx={{ fontSize: 10.5, color: "#918A9A", mb: 1.2 }}>
-                Break the task into steps. Progress shows at the top of the chat.
+                Break the task into steps. Progress shows at the top of the
+                chat.
               </Typography>
 
               {newChecklist.map((item, index) => (
-                <Stack key={`${item}-${index}`} direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.4 }}>
+                <Stack
+                  key={`${item}-${index}`}
+                  direction="row"
+                  alignItems="center"
+                  spacing={0.5}
+                  sx={{ mb: 0.4 }}
+                >
                   <Check sx={{ fontSize: 15, color: "#C0B8CE" }} />
-                  <Typography sx={{ flex: 1, fontSize: 12.5 }}>{item}</Typography>
+                  <Typography sx={{ flex: 1, fontSize: 12.5 }}>
+                    {item}
+                  </Typography>
                   <IconButton
                     size="small"
-                    onClick={() => setNewChecklist((previous) => previous.filter((_, i) => i !== index))}
+                    onClick={() =>
+                      setNewChecklist((previous) =>
+                        previous.filter((_, i) => i !== index),
+                      )
+                    }
                     sx={{ p: 0.4 }}
                   >
                     <Close sx={{ fontSize: 14 }} />
@@ -2645,20 +3519,37 @@ function TasksInner() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && checklistDraft.trim()) {
                       event.preventDefault();
-                      setNewChecklist((previous) => [...previous, checklistDraft.trim()]);
+                      setNewChecklist((previous) => [
+                        ...previous,
+                        checklistDraft.trim(),
+                      ]);
                       setChecklistDraft("");
                     }
                   }}
-                  sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2, bgcolor: "#fff", fontSize: 12.5 } }}
+                  sx={{
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: 2,
+                      bgcolor: "#fff",
+                      fontSize: 12.5,
+                    },
+                  }}
                 />
 
                 <IconButton
                   onClick={() => {
                     if (!checklistDraft.trim()) return;
-                    setNewChecklist((previous) => [...previous, checklistDraft.trim()]);
+                    setNewChecklist((previous) => [
+                      ...previous,
+                      checklistDraft.trim(),
+                    ]);
                     setChecklistDraft("");
                   }}
-                  sx={{ width: 36, height: 36, bgcolor: "#F3EEFF", color: PURPLE }}
+                  sx={{
+                    width: 36,
+                    height: 36,
+                    bgcolor: "#F3EEFF",
+                    color: PURPLE,
+                  }}
                 >
                   <Add sx={{ fontSize: 18 }} />
                 </IconButton>
@@ -2683,11 +3574,28 @@ function TasksInner() {
 
             {/* task recurrence */}
 
-            <Paper elevation={0} sx={{ p: 1.5, borderRadius: 2.5, border: "1px solid #EAE5F2", bgcolor: "#FBFAFD" }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 1.5,
+                borderRadius: 2.5,
+                border: "1px solid #EAE5F2",
+                bgcolor: "#FBFAFD",
+              }}
+            >
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                spacing={1}
+              >
                 <Box>
-                  <Typography sx={{ fontSize: 13, fontWeight: 800 }}>Recurring task</Typography>
-                  <Typography sx={{ fontSize: 10.5, color: "#918A9A", mt: 0.2 }}>
+                  <Typography sx={{ fontSize: 13, fontWeight: 800 }}>
+                    Recurring task
+                  </Typography>
+                  <Typography
+                    sx={{ fontSize: 10.5, color: "#918A9A", mt: 0.2 }}
+                  >
                     Creates a fresh task automatically after completion.
                   </Typography>
                 </Box>
@@ -2697,8 +3605,14 @@ function TasksInner() {
                   variant={recurrenceEnabled ? "contained" : "outlined"}
                   onClick={() => setRecurrenceEnabled((previous) => !previous)}
                   sx={{
-                    minWidth: 80, borderRadius: 2, textTransform: "none", fontWeight: 700,
-                    ...(recurrenceEnabled && { bgcolor: PURPLE, "&:hover": { bgcolor: PURPLE_DARK } }),
+                    minWidth: 80,
+                    borderRadius: 2,
+                    textTransform: "none",
+                    fontWeight: 700,
+                    ...(recurrenceEnabled && {
+                      bgcolor: PURPLE,
+                      "&:hover": { bgcolor: PURPLE_DARK },
+                    }),
                   }}
                 >
                   {recurrenceEnabled ? "Enabled" : "Off"}
@@ -2709,11 +3623,15 @@ function TasksInner() {
                 <FormControl fullWidth size="small" sx={{ mt: 1.5 }}>
                   <Select
                     value={recurrenceFrequency}
-                    onChange={(event) => setRecurrenceFrequency(event.target.value)}
+                    onChange={(event) =>
+                      setRecurrenceFrequency(event.target.value)
+                    }
                     sx={{ borderRadius: 2, bgcolor: "#fff" }}
                   >
                     {RECURRENCE_OPTIONS.map((item) => (
-                      <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+                      <MenuItem key={item.value} value={item.value}>
+                        {item.label}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -2722,7 +3640,8 @@ function TasksInner() {
 
             {mode !== "INDIVIDUAL" && assignedToList.length === 1 && (
               <Alert severity="info" sx={{ borderRadius: 2 }}>
-                Select at least two people for {mode === "GROUP" ? "a group task" : "separate assignment"}.
+                Select at least two people for{" "}
+                {mode === "GROUP" ? "a group task" : "separate assignment"}.
               </Alert>
             )}
           </Stack>
@@ -2744,10 +3663,19 @@ function TasksInner() {
             variant="contained"
             onClick={handleCreateTask}
             disabled={creating}
-            startIcon={creating ? <CircularProgress size={16} sx={{ color: "#fff" }} /> : <Add />}
+            startIcon={
+              creating ? (
+                <CircularProgress size={16} sx={{ color: "#fff" }} />
+              ) : (
+                <Add />
+              )
+            }
             sx={{
-              borderRadius: 2, textTransform: "none", fontWeight: 700,
-              bgcolor: PURPLE, "&:hover": { bgcolor: PURPLE_DARK },
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 700,
+              bgcolor: PURPLE,
+              "&:hover": { bgcolor: PURPLE_DARK },
             }}
           >
             {creating ? "Creating..." : "Create Task"}
@@ -2779,7 +3707,10 @@ function TasksInner() {
         </DialogContent>
 
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setEditingMessage(null)} sx={{ textTransform: "none", fontWeight: 700 }}>
+          <Button
+            onClick={() => setEditingMessage(null)}
+            sx={{ textTransform: "none", fontWeight: 700 }}
+          >
             Cancel
           </Button>
 
@@ -2788,8 +3719,11 @@ function TasksInner() {
             onClick={saveEditedMessage}
             disabled={!editText.trim()}
             sx={{
-              borderRadius: 2, textTransform: "none", fontWeight: 700,
-              bgcolor: PURPLE, "&:hover": { bgcolor: PURPLE_DARK },
+              borderRadius: 2,
+              textTransform: "none",
+              fontWeight: 700,
+              bgcolor: PURPLE,
+              "&:hover": { bgcolor: PURPLE_DARK },
             }}
           >
             Save Changes
@@ -2810,7 +3744,8 @@ function TasksInner() {
 
         <DialogContent>
           <Typography sx={{ color: "#746D7D", fontSize: 13 }}>
-            This permanently deletes the task, its checklist and the whole conversation.
+            This permanently deletes the task, its checklist and the whole
+            conversation.
           </Typography>
         </DialogContent>
 
@@ -2828,7 +3763,13 @@ function TasksInner() {
             color="error"
             onClick={deleteCurrentTask}
             disabled={deleting}
-            startIcon={deleting ? <CircularProgress size={16} sx={{ color: "#fff" }} /> : <Delete />}
+            startIcon={
+              deleting ? (
+                <CircularProgress size={16} sx={{ color: "#fff" }} />
+              ) : (
+                <Delete />
+              )
+            }
             sx={{ borderRadius: 2, textTransform: "none", fontWeight: 700 }}
           >
             {deleting ? "Deleting..." : "Delete Task"}
