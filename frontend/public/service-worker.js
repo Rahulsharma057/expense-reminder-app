@@ -240,276 +240,226 @@ self.addEventListener("push", (event) => {
       // CHAT / TASK NOTIFICATION
       // ======================================================
 
-      const taskId = String(
-        data.taskId || ""
-      ).trim();
+     // ======================================================
+// CHAT / TASK NOTIFICATION
+// ======================================================
 
-      if (!taskId) {
-        await self.registration.showNotification(
-          data.title ||
-            "New notification",
-          {
-            body: data.body || "",
+const taskId = String(
+  data.taskId || ""
+).trim();
 
-            icon:
-              data.avatarUrl ||
-              "/icon-192.png",
+if (!taskId) {
+  await self.registration.showNotification(
+    data.title || "New notification",
+    {
+      body: data.body || "",
 
-            badge: "/icon-192.png",
+      icon:
+        data.avatarUrl ||
+        "/icon-192.png",
 
-            data: {
-              url: data.url || "/",
-            },
-          }
-        );
+      image:
+        data.avatarUrl ||
+        "/icon-192.png",
 
-        return;
-      }
+      badge: "/icon-192.png",
 
-      // ======================================================
-      // APP ALREADY OPEN
-      //
-      // Send data to the web app so the app can show
-      // a custom WhatsApp-style notification card.
-      //
-      // Do NOT show native notification in this case.
-      // ======================================================
+      tag:
+        data.tag ||
+        `notification-${Date.now()}`,
 
-      if (
-        data.notificationType === "chat"
-      ) {
-        const appClients =
-          await clients.matchAll({
-            type: "window",
-            includeUncontrolled: true,
-          });
+      renotify: true,
 
-        if (appClients.length > 0) {
-          console.log(
-            "💬 APP OPEN - SENDING CUSTOM CHAT NOTIFICATION"
-          );
+      requireInteraction: false,
 
-          for (const client of appClients) {
-            client.postMessage({
-              type:
-                "CHAT_PUSH_NOTIFICATION",
+      data: {
+        url: data.url || "/",
+      },
+    }
+  );
 
-              payload: {
-                ...data,
+  return;
+}
 
-                taskId,
+// ======================================================
+// GROUP CHAT NOTIFICATIONS
+// ======================================================
 
-                notificationType:
-                  "chat",
-              },
-            });
-          }
+// IMPORTANT:
+// Do NOT suppress native notification when app is open.
+// Notification will always be visible.
 
-          return;
-        }
-      }
+const existing =
+  await getChatNotification(taskId);
 
-      // ======================================================
-      // APP CLOSED
-      //
-      // Continue with native grouped notification.
-      // ======================================================
+const incomingMessage = String(
+  data.body || ""
+).trim();
 
-      const existing =
-        await getChatNotification(
-          taskId
-        );
+let messages = Array.isArray(
+  existing?.messages
+)
+  ? existing.messages
+  : [];
 
-      const incomingMessage = String(
-        data.body || ""
-      ).trim();
+// ======================================================
+// ADD LATEST MESSAGE
+// ======================================================
 
-      let messages = Array.isArray(
-        existing?.messages
+if (incomingMessage) {
+  messages.push({
+    text: incomingMessage,
+
+    createdAt:
+      new Date().toISOString(),
+  });
+}
+
+// Keep only latest 5 messages
+messages = messages.slice(-5);
+
+// ======================================================
+// SENDER
+// ======================================================
+
+const senderName =
+  data.senderName ||
+  existing?.senderName ||
+  data.title ||
+  "New Message";
+
+// ======================================================
+// AVATAR
+// ======================================================
+
+const avatarUrl =
+  typeof data.avatarUrl === "string" &&
+  data.avatarUrl.trim()
+    ? data.avatarUrl.trim()
+    : existing?.avatarUrl ||
+      "/icon-192.png";
+
+// ======================================================
+// SAVE GROUP
+// ======================================================
+
+const notificationData = {
+  taskId,
+
+  senderName,
+
+  avatarUrl,
+
+  messages,
+
+  url:
+    data.url ||
+    `/tasks?open=${taskId}`,
+
+  senderId:
+    data.senderId ||
+    existing?.senderId ||
+    "",
+
+  updatedAt:
+    new Date().toISOString(),
+};
+
+await saveChatNotification(
+  notificationData
+);
+
+// ======================================================
+// BODY
+// ======================================================
+
+const messageCount =
+  messages.length;
+
+let body = "";
+
+if (messageCount === 1) {
+  body =
+    messages[0]?.text ||
+    "New message";
+} else {
+  body =
+    `${messageCount} new messages\n` +
+    messages
+      .slice(-3)
+      .map(
+        (item) =>
+          `• ${item.text}`
       )
-        ? existing.messages
-        : [];
+      .join("\n");
+}
 
-      // ======================================================
-      // ADD LATEST MESSAGE
-      // ======================================================
+// ======================================================
+// NATIVE NOTIFICATION
+// ======================================================
 
-      if (incomingMessage) {
-        messages.push({
-          text: incomingMessage,
+const notificationOptions = {
+  body,
 
-          createdAt:
-            new Date().toISOString(),
-        });
-      }
+  icon: avatarUrl,
 
-      // ======================================================
-      // KEEP LATEST 5 PREVIEWS
-      // ======================================================
+  image: avatarUrl,
 
-      messages = messages.slice(-5);
+  badge: "/icon-192.png",
 
-      // ======================================================
-      // SENDER
-      // ======================================================
+  // Same task = same notification
+  tag: `chat-${taskId}`,
 
-      const senderName =
-        data.senderName ||
-        existing?.senderName ||
-        data.title ||
-        "New Message";
+  // Update existing notification
+  renotify: true,
 
-      // ======================================================
-      // AVATAR
-      // ======================================================
+  requireInteraction: false,
 
-      const avatarUrl =
-        typeof data.avatarUrl ===
-          "string" &&
-        data.avatarUrl.trim()
-          ? data.avatarUrl.trim()
-          : existing?.avatarUrl ||
-            "/icon-192.png";
+  data: {
+    url:
+      data.url ||
+      `/tasks?open=${taskId}`,
 
-      // ======================================================
-      // MESSAGE COUNT
-      // ======================================================
+    taskId,
 
-      const messageCount =
-        messages.length;
+    notificationType:
+      "chat",
 
-      // ======================================================
-      // SAVE GROUP
-      // ======================================================
+    senderId:
+      data.senderId ||
+      existing?.senderId ||
+      "",
 
-      const notificationData = {
-        taskId,
+    senderName,
 
-        senderName,
+    avatarUrl,
+  },
 
-        avatarUrl,
+  actions: [
+    {
+      action: "reply",
+      title: "Reply",
+    },
+    {
+      action: "show",
+      title: "Show",
+    },
+    {
+      action: "block",
+      title: "Block",
+    },
+  ],
+};
 
-        messages,
+console.log(
+  "📢 GROUPED CHAT NOTIFICATION:",
+  notificationOptions
+);
 
-        url:
-          data.url ||
-          `/tasks?open=${taskId}`,
-
-        senderId:
-          data.senderId ||
-          existing?.senderId ||
-          "",
-
-        updatedAt:
-          new Date().toISOString(),
-      };
-
-      await saveChatNotification(
-        notificationData
-      );
-
-      // ======================================================
-      // WHATSAPP STYLE BODY
-      // ======================================================
-
-      let body = "";
-
-      if (messageCount === 1) {
-        body =
-          messages[0]?.text ||
-          "New message";
-      } else {
-        body = `${messageCount} new messages`;
-      }
-
-      // ======================================================
-      // MESSAGE PREVIEWS
-      // ======================================================
-
-      if (messageCount > 1) {
-        const previewText = messages
-          .slice(-3)
-          .map(
-            (item) =>
-              `• ${item.text}`
-          )
-          .join("\n");
-
-        body =
-          `${messageCount} new messages\n` +
-          previewText;
-      }
-
-      // ======================================================
-      // NATIVE NOTIFICATION
-      // ======================================================
-
-      const notificationOptions = {
-        body,
-
-        icon: avatarUrl,
-
-        image: avatarUrl,
-
-        badge: "/icon-192.png",
-
-        // Same task = same notification
-        tag: `chat-${taskId}`,
-
-        // Update existing notification
-        renotify: true,
-
-        requireInteraction: false,
-
-        data: {
-          url:
-            data.url ||
-            `/tasks?open=${taskId}`,
-
-          taskId,
-
-          notificationType:
-            "chat",
-
-          senderId:
-            data.senderId ||
-            existing?.senderId ||
-            "",
-
-          senderName,
-
-          avatarUrl,
-        },
-
-        // ====================================================
-        // ACTION BUTTONS
-        // ====================================================
-
-        actions: [
-          {
-            action: "reply",
-            title: "Reply",
-          },
-          {
-            action: "show",
-            title: "Show",
-          },
-          {
-            action: "block",
-            title: "Block",
-          },
-        ],
-      };
-
-      console.log(
-        "📢 GROUPED CHAT NOTIFICATION:",
-        notificationOptions
-      );
-
-      await self.registration.showNotification(
-        senderName,
-        notificationOptions
-      );
+await self.registration.showNotification(
+  senderName,
+  notificationOptions
+);
     })()
   );
 });
