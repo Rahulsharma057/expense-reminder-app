@@ -1,7 +1,3 @@
-// public/sw.js
-// Must be served from the site root:
-// https://yoursite.com/sw.js
-
 self.addEventListener("push", (event) => {
   let data = {};
 
@@ -9,29 +5,22 @@ self.addEventListener("push", (event) => {
     data = event.data ? event.data.json() : {};
   } catch {
     data = {
-      title: "New notification",
+      title: "Notification",
       body: event.data ? event.data.text() : "",
     };
   }
 
-  const title = data.title || "New notification";
+  const title = data.title || "Reminder";
 
   const options = {
     body: data.body || "",
-
-    // Sender profile photo
     icon: data.avatarUrl || "/icon-192.png",
-
-    // Larger notification image where supported
     image: data.avatarUrl || undefined,
-
-    // Notification badge
     badge: "/icon-192.png",
-
     tag: data.tag || "task-update",
 
     data: {
-      url: data.url || "/tasks",
+      url: data.url || "/",
     },
   };
 
@@ -43,7 +32,7 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const url = event.notification.data?.url || "/tasks";
+  const url = event.notification.data?.url || "/";
 
   event.waitUntil(
     clients
