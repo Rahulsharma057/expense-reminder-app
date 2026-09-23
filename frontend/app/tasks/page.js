@@ -344,6 +344,151 @@ function ChecklistPanel({
 
   return (
     <Box sx={{ borderBottom: "1px solid #EEEAF4", bgcolor: "#FFFFFF" }}>
+      {pushChatNotification && (
+  <Paper
+    elevation={8}
+    sx={{
+      position: "fixed",
+      top: 20,
+      right: 20,
+      width: {
+        xs: "calc(100% - 32px)",
+        sm: 380,
+      },
+      zIndex: 99999,
+      borderRadius: 3,
+      overflow: "hidden",
+    }}
+  >
+    <Box
+      sx={{
+        p: 1.5,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 1.5,
+      }}
+    >
+      <Avatar
+        src={
+          pushChatNotification.avatarUrl
+        }
+        alt={
+          pushChatNotification.senderName
+        }
+        sx={{
+          width: 44,
+          height: 44,
+        }}
+      >
+        {pushChatNotification.senderName
+          ?.charAt(0)
+          ?.toUpperCase()}
+      </Avatar>
+
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <Typography
+          fontWeight={700}
+          noWrap
+        >
+          {pushChatNotification.senderName}
+        </Typography>
+
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            mt: 0.25,
+            whiteSpace: "pre-line",
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {pushChatNotification.body ||
+            "New message"}
+        </Typography>
+      </Box>
+
+      <IconButton
+        size="small"
+        onClick={() =>
+          setPushChatNotification(null)
+        }
+      >
+        <Close />
+      </IconButton>
+    </Box>
+
+    <Divider />
+
+    <Box
+      sx={{
+        p: 1,
+        display: "flex",
+        gap: 1,
+      }}
+    >
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => {
+          const taskId =
+            pushChatNotification.taskId;
+
+          setPushChatNotification(null);
+
+          if (taskId) {
+            router.push(
+              `/tasks?open=${encodeURIComponent(
+                taskId
+              )}&reply=1`
+            );
+          }
+        }}
+      >
+        Reply
+      </Button>
+
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => {
+          const taskId =
+            pushChatNotification.taskId;
+
+          setPushChatNotification(null);
+
+          if (taskId) {
+            router.push(
+              `/tasks?open=${encodeURIComponent(
+                taskId
+              )}`
+            );
+          }
+        }}
+      >
+        Show
+      </Button>
+
+      <Button
+        size="small"
+        color="error"
+        variant="text"
+        onClick={() => {
+          setPushChatNotification(null);
+        }}
+      >
+        Block
+      </Button>
+    </Box>
+  </Paper>
+)}
       <Stack
         direction="row"
         alignItems="center"
@@ -645,6 +790,8 @@ function TasksInner() {
   /* ---------------- messages ---------------- */
 
   const [messageText, setMessageText] = useState("");
+  const [pushChatNotification, setPushChatNotification] =
+  useState(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [editingMessage, setEditingMessage] = useState(null);
   const [editText, setEditText] = useState("");
@@ -661,6 +808,53 @@ function TasksInner() {
   useEffect(() => {
     selectedIdRef.current = selectedTask?._id || null;
   }, [selectedTask?._id]);
+
+  useEffect(() => {
+  const handlePushMessage = (event) => {
+    if (
+      event.data?.type !==
+      "CHAT_PUSH_NOTIFICATION"
+    ) {
+      return;
+    }
+
+    const data =
+      event.data.payload || {};
+
+    setPushChatNotification({
+      taskId: data.taskId || "",
+      senderName:
+        data.senderName ||
+        "New message",
+      avatarUrl:
+        data.avatarUrl ||
+        "/icon-192.png",
+      body: data.body || "",
+    });
+  };
+
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.serviceWorker
+  ) {
+    navigator.serviceWorker.addEventListener(
+      "message",
+      handlePushMessage
+    );
+  }
+
+  return () => {
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.serviceWorker
+    ) {
+      navigator.serviceWorker.removeEventListener(
+        "message",
+        handlePushMessage
+      );
+    }
+  };
+}, []);
 
   /* =======================================================
      CURRENT USER
@@ -895,39 +1089,62 @@ function TasksInner() {
      notification just landed on the plain task list. This
      resolves it once the task list has loaded.
   ======================================================= */
-
 useEffect(() => {
-  const openId = searchParams.get("open");
-  const shouldReply = searchParams.get("reply") === "1";
+  const openId =
+    searchParams.get("open");
 
-  if (!openId || loading || autoOpenedFromUrlRef.current) return;
+  const shouldReply =
+    searchParams.get("reply") === "1";
+
+  if (
+    !openId ||
+    loading ||
+    autoOpenedFromUrlRef.current
+  ) {
+    return;
+  }
 
   autoOpenedFromUrlRef.current = true;
 
-  const openAndMaybeReply = async (task) => {
+  const openAndMaybeReply = async (
+    task
+  ) => {
     await openTask(task);
 
     if (shouldReply) {
       setTimeout(() => {
         messageInputRef.current?.focus();
-      }, 300);
+      }, 500);
     }
   };
 
-  const existing = tasks.find((task) => task._id === openId);
+  const existing = tasks.find(
+    (task) => task._id === openId
+  );
 
   if (existing) {
     openAndMaybeReply(existing);
   } else {
     api
       .get(`/tasks/${openId}`)
-      .then((res) => openAndMaybeReply(res.data))
-      .catch(() => toast.error("Could not open that task"));
+      .then((res) =>
+        openAndMaybeReply(res.data)
+      )
+      .catch(() =>
+        toast.error(
+          "Could not open that task"
+        )
+      );
   }
 
-  // URL clean kar do
   router.replace("/tasks");
-}, [searchParams, loading, tasks, openTask, router]);
+}, [
+  searchParams,
+  loading,
+  tasks,
+  openTask,
+  router,
+]);
   /* =======================================================
      REALTIME — user room
   ======================================================= */
@@ -3044,13 +3261,13 @@ useEffect(() => {
                     </IconButton>
                   </Tooltip>
 
-                  <TextField
-                    fullWidth
-                      inputRef={messageInputRef}
-                    multiline
-                    maxRows={4}
-                    value={messageText}
-                    onChange={handleMessageTextChange}
+         <TextField
+  fullWidth
+  multiline
+  maxRows={4}
+  inputRef={messageInputRef}
+  value={messageText}
+  onChange={handleMessageTextChange}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();

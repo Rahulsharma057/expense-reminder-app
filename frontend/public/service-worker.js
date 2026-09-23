@@ -13,20 +13,30 @@ const STORE_NAME = "chat-notifications";
 
 const openDB = () =>
   new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(
+      DB_NAME,
+      DB_VERSION
+    );
 
     request.onupgradeneeded = () => {
       const db = request.result;
 
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
+      if (
+        !db.objectStoreNames.contains(
+          STORE_NAME
+        )
+      ) {
         db.createObjectStore(STORE_NAME, {
           keyPath: "taskId",
         });
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () =>
+      resolve(request.result);
+
+    request.onerror = () =>
+      reject(request.error);
   });
 
 const getChatNotification = async (taskId) => {
@@ -35,18 +45,29 @@ const getChatNotification = async (taskId) => {
   try {
     const db = await openDB();
 
-    return await new Promise((resolve, reject) => {
-      const transaction = db.transaction(
-        STORE_NAME,
-        "readonly"
-      );
+    return await new Promise(
+      (resolve, reject) => {
+        const transaction = db.transaction(
+          STORE_NAME,
+          "readonly"
+        );
 
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.get(String(taskId));
+        const store =
+          transaction.objectStore(
+            STORE_NAME
+          );
 
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
+        const request = store.get(
+          String(taskId)
+        );
+
+        request.onsuccess = () =>
+          resolve(request.result || null);
+
+        request.onerror = () =>
+          reject(request.error);
+      }
+    );
   } catch (error) {
     console.error(
       "[SW] IndexedDB read failed:",
@@ -67,12 +88,18 @@ const saveChatNotification = async (data) => {
         "readwrite"
       );
 
-      const store = transaction.objectStore(STORE_NAME);
+      const store =
+        transaction.objectStore(
+          STORE_NAME
+        );
 
       store.put(data);
 
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
+      transaction.oncomplete = () =>
+        resolve();
+
+      transaction.onerror = () =>
+        reject(transaction.error);
     });
   } catch (error) {
     console.error(
@@ -82,7 +109,9 @@ const saveChatNotification = async (data) => {
   }
 };
 
-const deleteChatNotification = async (taskId) => {
+const deleteChatNotification = async (
+  taskId
+) => {
   if (!taskId) return;
 
   try {
@@ -94,12 +123,18 @@ const deleteChatNotification = async (taskId) => {
         "readwrite"
       );
 
-      const store = transaction.objectStore(STORE_NAME);
+      const store =
+        transaction.objectStore(
+          STORE_NAME
+        );
 
       store.delete(String(taskId));
 
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
+      transaction.oncomplete = () =>
+        resolve();
+
+      transaction.onerror = () =>
+        reject(transaction.error);
     });
   } catch (error) {
     console.error(
@@ -153,7 +188,8 @@ self.addEventListener("push", (event) => {
         ).trim();
 
         const avatarUrl =
-          typeof data.avatarUrl === "string" &&
+          typeof data.avatarUrl ===
+            "string" &&
           data.avatarUrl.trim()
             ? data.avatarUrl.trim()
             : "/icon-192.png";
@@ -167,8 +203,10 @@ self.addEventListener("push", (event) => {
 
           badge: "/icon-192.png",
 
-          // Random notifications remain separate
-          tag: data.tag || "random-message",
+          // Every random notification is separate
+          tag:
+            data.tag ||
+            `random-${Date.now()}`,
 
           renotify: false,
 
@@ -176,9 +214,12 @@ self.addEventListener("push", (event) => {
 
           data: {
             url: data.url || "/",
+
             avatarUrl,
+
             notificationType:
-              data.notificationType || "random",
+              data.notificationType ||
+              "random",
           },
         };
 
@@ -205,13 +246,17 @@ self.addEventListener("push", (event) => {
 
       if (!taskId) {
         await self.registration.showNotification(
-          data.title || "New notification",
+          data.title ||
+            "New notification",
           {
             body: data.body || "",
+
             icon:
               data.avatarUrl ||
               "/icon-192.png",
+
             badge: "/icon-192.png",
+
             data: {
               url: data.url || "/",
             },
@@ -221,11 +266,63 @@ self.addEventListener("push", (event) => {
         return;
       }
 
-      const existing =
-        await getChatNotification(taskId);
+      // ======================================================
+      // APP ALREADY OPEN
+      //
+      // Send data to the web app so the app can show
+      // a custom WhatsApp-style notification card.
+      //
+      // Do NOT show native notification in this case.
+      // ======================================================
 
-      const incomingMessage =
-        String(data.body || "").trim();
+      if (
+        data.notificationType === "chat"
+      ) {
+        const appClients =
+          await clients.matchAll({
+            type: "window",
+            includeUncontrolled: true,
+          });
+
+        if (appClients.length > 0) {
+          console.log(
+            "💬 APP OPEN - SENDING CUSTOM CHAT NOTIFICATION"
+          );
+
+          for (const client of appClients) {
+            client.postMessage({
+              type:
+                "CHAT_PUSH_NOTIFICATION",
+
+              payload: {
+                ...data,
+
+                taskId,
+
+                notificationType:
+                  "chat",
+              },
+            });
+          }
+
+          return;
+        }
+      }
+
+      // ======================================================
+      // APP CLOSED
+      //
+      // Continue with native grouped notification.
+      // ======================================================
+
+      const existing =
+        await getChatNotification(
+          taskId
+        );
+
+      const incomingMessage = String(
+        data.body || ""
+      ).trim();
 
       let messages = Array.isArray(
         existing?.messages
@@ -233,16 +330,28 @@ self.addEventListener("push", (event) => {
         ? existing.messages
         : [];
 
-      // Add latest message
+      // ======================================================
+      // ADD LATEST MESSAGE
+      // ======================================================
+
       if (incomingMessage) {
         messages.push({
           text: incomingMessage,
-          createdAt: new Date().toISOString(),
+
+          createdAt:
+            new Date().toISOString(),
         });
       }
 
-      // Keep only latest 5 previews
+      // ======================================================
+      // KEEP LATEST 5 PREVIEWS
+      // ======================================================
+
       messages = messages.slice(-5);
+
+      // ======================================================
+      // SENDER
+      // ======================================================
 
       const senderName =
         data.senderName ||
@@ -250,15 +359,28 @@ self.addEventListener("push", (event) => {
         data.title ||
         "New Message";
 
+      // ======================================================
+      // AVATAR
+      // ======================================================
+
       const avatarUrl =
-        typeof data.avatarUrl === "string" &&
+        typeof data.avatarUrl ===
+          "string" &&
         data.avatarUrl.trim()
           ? data.avatarUrl.trim()
           : existing?.avatarUrl ||
             "/icon-192.png";
 
+      // ======================================================
+      // MESSAGE COUNT
+      // ======================================================
+
       const messageCount =
         messages.length;
+
+      // ======================================================
+      // SAVE GROUP
+      // ======================================================
 
       const notificationData = {
         taskId,
@@ -293,7 +415,9 @@ self.addEventListener("push", (event) => {
       let body = "";
 
       if (messageCount === 1) {
-        body = messages[0]?.text || "New message";
+        body =
+          messages[0]?.text ||
+          "New message";
       } else {
         body = `${messageCount} new messages`;
       }
@@ -305,11 +429,20 @@ self.addEventListener("push", (event) => {
       if (messageCount > 1) {
         const previewText = messages
           .slice(-3)
-          .map((item) => `• ${item.text}`)
+          .map(
+            (item) =>
+              `• ${item.text}`
+          )
           .join("\n");
 
-        body = `${messageCount} new messages\n${previewText}`;
+        body =
+          `${messageCount} new messages\n` +
+          previewText;
       }
+
+      // ======================================================
+      // NATIVE NOTIFICATION
+      // ======================================================
 
       const notificationOptions = {
         body,
@@ -340,6 +473,7 @@ self.addEventListener("push", (event) => {
 
           senderId:
             data.senderId ||
+            existing?.senderId ||
             "",
 
           senderName,
@@ -456,9 +590,7 @@ self.addEventListener(
           });
 
         for (const client of clientList) {
-          if (
-            "focus" in client
-          ) {
+          if ("focus" in client) {
             await client.focus();
 
             if (
@@ -472,6 +604,10 @@ self.addEventListener(
             return client;
           }
         }
+
+        // ====================================================
+        // NO OPEN WINDOW
+        // ====================================================
 
         if (clients.openWindow) {
           return clients.openWindow(
@@ -495,10 +631,10 @@ self.addEventListener(
     const data =
       event.notification?.data || {};
 
-    // We intentionally DO NOT delete the
+    // We intentionally DO NOT delete
     // grouped chat history here.
     //
-    // This allows the next message to continue
-    // the same grouped notification.
+    // Next message will continue the
+    // same grouped notification.
   }
 );
