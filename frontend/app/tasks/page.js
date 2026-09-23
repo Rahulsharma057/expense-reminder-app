@@ -1816,6 +1816,151 @@ useEffect(() => {
         overflowX: "hidden",
       }}
     >
+         {pushChatNotification && (
+  <Paper
+    elevation={8}
+    sx={{
+      position: "fixed",
+      top: 20,
+      right: 20,
+      width: {
+        xs: "calc(100% - 32px)",
+        sm: 380,
+      },
+      zIndex: 99999,
+      borderRadius: 3,
+      overflow: "hidden",
+    }}
+  >
+    <Box
+      sx={{
+        p: 1.5,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 1.5,
+      }}
+    >
+      <Avatar
+        src={
+          pushChatNotification.avatarUrl
+        }
+        alt={
+          pushChatNotification.senderName
+        }
+        sx={{
+          width: 44,
+          height: 44,
+        }}
+      >
+        {pushChatNotification.senderName
+          ?.charAt(0)
+          ?.toUpperCase()}
+      </Avatar>
+
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        <Typography
+          fontWeight={700}
+          noWrap
+        >
+          {pushChatNotification.senderName}
+        </Typography>
+
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            mt: 0.25,
+            whiteSpace: "pre-line",
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {pushChatNotification.body ||
+            "New message"}
+        </Typography>
+      </Box>
+
+      <IconButton
+        size="small"
+        onClick={() =>
+          setPushChatNotification(null)
+        }
+      >
+        <Close />
+      </IconButton>
+    </Box>
+
+    <Divider />
+
+    <Box
+      sx={{
+        p: 1,
+        display: "flex",
+        gap: 1,
+      }}
+    >
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => {
+          const taskId =
+            pushChatNotification.taskId;
+
+          setPushChatNotification(null);
+
+          if (taskId) {
+            router.push(
+              `/tasks?open=${encodeURIComponent(
+                taskId
+              )}&reply=1`
+            );
+          }
+        }}
+      >
+        Reply
+      </Button>
+
+      <Button
+        size="small"
+        variant="text"
+        onClick={() => {
+          const taskId =
+            pushChatNotification.taskId;
+
+          setPushChatNotification(null);
+
+          if (taskId) {
+            router.push(
+              `/tasks?open=${encodeURIComponent(
+                taskId
+              )}`
+            );
+          }
+        }}
+      >
+        Show
+      </Button>
+
+      <Button
+        size="small"
+        color="error"
+        variant="text"
+        onClick={() => {
+          setPushChatNotification(null);
+        }}
+      >
+        Block
+      </Button>
+    </Box>
+  </Paper>
+)}
       <Box
         sx={{ display: { xs: selectedTask ? "none" : "block", md: "block" } }}
       >
