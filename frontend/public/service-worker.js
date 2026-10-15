@@ -3,8 +3,17 @@
 // ==========================================================
 
 const DB_NAME = "push-notification-db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "chat-notifications";
+
+// Used by the Web Share Target handler below: when PhonePe/GPay/WhatsApp/
+// Gallery shares a screenshot or text into this installed PWA, the browser
+// POSTs it here as a page navigation (no Authorization header possible —
+// this app's auth is a Bearer token in localStorage, not a cookie). We
+// stash the shared payload in IndexedDB and redirect to an authenticated
+// page that reads it back and lets the user review/save it normally.
+const SHARE_DRAFT_STORE = "payment-share-drafts";
+const SHARE_DRAFT_KEY = "latest";
 
 // ==========================================================
 // INDEXED DB
@@ -28,6 +37,16 @@ const openDB = () =>
       ) {
         db.createObjectStore(STORE_NAME, {
           keyPath: "taskId",
+        });
+      }
+
+      if (
+        !db.objectStoreNames.contains(
+          SHARE_DRAFT_STORE
+        )
+      ) {
+        db.createObjectStore(SHARE_DRAFT_STORE, {
+          keyPath: "id",
         });
       }
     };
@@ -143,6 +162,101 @@ const deleteChatNotification = async (
     );
   }
 };
+
+const saveShareDraft = async (draft) => {
+  try {
+    const db = await openDB();
+
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(
+        SHARE_DRAFT_STORE,
+        "readwrite"
+      );
+
+      const store = transaction.objectStore(
+        SHARE_DRAFT_STORE
+      );
+
+      store.put({ id: SHARE_DRAFT_KEY, ...draft });
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  } catch (error) {
+    console.error(
+      "[SW] Failed to save shared payment draft:",
+      error
+    );
+  }
+};
+
+// ==========================================================
+// WEB SHARE TARGET
+// Android's share sheet (PhonePe / Google Pay / WhatsApp / Gallery /
+// etc.) POSTs the shared image and/or text here because this installed
+// PWA's manifest.json declares a share_target pointing at this URL.
+// This fetch handler intercepts that POST before it ever reaches the
+// network, stores the payload locally, and redirects to the review page.
+// Everything else falls through untouched (no event.respondWith call),
+// so this can't affect any other request the app makes.
+// ==========================================================
+
+const SHARE_TARGET_PATH = "/transactions/share-target";
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  if (
+    event.request.method !== "POST" ||
+    url.pathname !== SHARE_TARGET_PATH
+  ) {
+    return;
+  }
+
+  event.respondWith(
+    (async () => {
+      try {
+        const formData = await event.request.formData();
+
+        const text = String(formData.get("text") || "").trim();
+        const title = String(formData.get("title") || "").trim();
+        const sharedUrl = String(formData.get("url") || "").trim();
+        const file = formData.get("screenshot");
+
+        const hasFile =
+          file &&
+          typeof file === "object" &&
+          "size" in file &&
+          file.size > 0;
+
+        await saveShareDraft({
+          text,
+          title,
+          url: sharedUrl,
+          file: hasFile ? file : null,
+          fileName: hasFile ? file.name || "" : "",
+          fileType: hasFile ? file.type || "" : "",
+          createdAt: Date.now(),
+        });
+
+        return Response.redirect(
+          "/transactions/import?shared=1",
+          303
+        );
+      } catch (error) {
+        console.error(
+          "[SW] Share target handling failed:",
+          error
+        );
+
+        return Response.redirect(
+          "/transactions/import?shared=error",
+          303
+        );
+      }
+    })()
+  );
+});
 
 // ==========================================================
 // PUSH EVENT

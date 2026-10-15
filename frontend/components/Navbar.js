@@ -32,6 +32,8 @@ import ChecklistRtlRoundedIcon from "@mui/icons-material/ChecklistRtlRounded";
 import PhotoCameraRoundedIcon from "@mui/icons-material/PhotoCameraRounded";
 import PlaylistAddCheckRoundedIcon from "@mui/icons-material/PlaylistAddCheckRounded";
 import HandshakeRoundedIcon from "@mui/icons-material/HandshakeRounded";
+import CallReceivedRoundedIcon from "@mui/icons-material/CallReceivedRounded";
+import CallMadeRoundedIcon from "@mui/icons-material/CallMadeRounded";
 import VideocamRoundedIcon from "@mui/icons-material/VideocamRounded";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
@@ -92,6 +94,8 @@ const NAV_GROUPS = [
     title: "Finance",
     items: [
       { label: "Expenses", href: "/expenses", icon: <ReceiptLongRoundedIcon /> },
+      { label: "Received Payments", href: "/received-payments", icon: <CallReceivedRoundedIcon /> },
+      { label: "Sent Payments", href: "/sent-payments", icon: <CallMadeRoundedIcon /> },
       { label: "Reminders", href: "/reminders", icon: <NotificationsActiveRoundedIcon /> },
       { label: "Udhaar Khata", href: "/udhaar", icon: <HandshakeRoundedIcon /> },
       { label: "Shopping", href: "/shopping", icon: <ShoppingCartRoundedIcon /> },

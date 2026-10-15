@@ -60,6 +60,19 @@ const eventRoutes = require("./routes/eventRoutes");
 const eventItemTemplateRoutes = require("./routes/eventItemTemplateRoutes");
 const { startEventReminderJob } = require("./jobs/eventReminder");
 
+// NEW: received payments — records of money received (e.g. imported from
+// a shared PhonePe/GPay/WhatsApp screenshot via the PWA's Web Share
+// Target, or entered manually). Separate from the existing Expense model,
+// which only tracks money paid out.
+const receivedPaymentRoutes = require("./routes/receivedPaymentRoutes");
+
+// NEW: sent payments — the other direction of the same import flow
+// (money the user sent to someone else). Kept as its own model/collection
+// rather than merged into ReceivedPayment or Expense, so a client can
+// never write a sent payment into the received-payments endpoint (or
+// vice versa) without an explicit, validated choice of API.
+const sentPaymentRoutes = require("./routes/sentPaymentRoutes");
+
 const app = express();
 
 /* =========================================================
@@ -203,6 +216,10 @@ app.use("/api/interviews", interviewRoutes);
 // NEW: event/function planning module — items/budget, guests, RSVP.
 app.use("/api/events", eventRoutes);
 app.use("/api/event-item-templates", eventItemTemplateRoutes);
+
+// NEW: received payments / sent payments modules.
+app.use("/api/received-payments", receivedPaymentRoutes);
+app.use("/api/sent-payments", sentPaymentRoutes);
 
 /* =========================================================
   ERROR HANDLING
