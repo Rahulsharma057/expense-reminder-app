@@ -391,15 +391,19 @@ export default function ExpenseForm({ mode = "create", initialData = null, onDon
                 {totalPhotoCount < MAX_PHOTOS && (
                   <Button variant="outlined" component="label" startIcon={<AddAPhotoIcon />} sx={{ textTransform: "none", borderRadius: 2, height: 72 }}>
                     Add Photo
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      hidden
-                      multiple
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => { handlePhotosSelected(e.target.files); e.target.value = ""; }}
-                    />
+                 
+<input
+  ref={fileInputRef}
+  type="file"
+  hidden
+  multiple
+  accept="image/*"
+  onChange={(e) => {
+    handlePhotosSelected(e.target.files);
+    e.target.value = "";
+  }}
+/>
+
                   </Button>
                 )}
               </Stack>
