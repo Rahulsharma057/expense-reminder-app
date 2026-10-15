@@ -27,6 +27,7 @@ import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import api from "../../lib/api";
 import { saveSession } from "../../lib/auth";
 import { enablePushNotifications } from "../../lib/push";
+import { consumeReturnTo } from "../../lib/postLoginRedirect";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,7 +59,12 @@ export default function LoginPage() {
 
       enablePushNotifications().catch(() => {});
 
-      router.replace("/dashboard");
+      // If ProtectedRoute bounced the user here from somewhere specific
+      // (e.g. a shared payment screenshot landed on
+      // /transactions/import?shared=1 while logged out), send them back
+      // there instead of always defaulting to the dashboard — the shared
+      // draft is still sitting in IndexedDB waiting to be picked up.
+      router.replace(consumeReturnTo("/dashboard"));
     } catch (err) {
       setError(
         err?.response?.data?.message ||

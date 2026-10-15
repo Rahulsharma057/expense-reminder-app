@@ -131,6 +131,14 @@ function ImportTransactionInner() {
   // =========================================================
   // LOAD SHARED DRAFT (from the Android share sheet, staged by the
   // service worker) — or show a manual-import notice if there isn't one.
+  //
+  // This always checks IndexedDB for a pending draft, regardless of the
+  // `?shared=` query param — that param can legitimately get lost (e.g.
+  // the user wasn't logged in yet, got bounced to /login, and the
+  // ?shared=1 on the original URL doesn't survive that redirect; see
+  // ProtectedRoute.js / login/page.js for the return-to-this-page logic).
+  // The draft itself lives in IndexedDB independent of the URL, so it's
+  // still picked up here whenever the user actually lands on this page.
   // =========================================================
   useEffect(() => {
     const shared = searchParams.get("shared");
@@ -142,14 +150,18 @@ function ImportTransactionInner() {
       return;
     }
 
-    if (!shared) return;
-
     (async () => {
       const draft = await getSharedDraft();
       if (!draft) {
-        setShareNotice(
-          "Nothing came through from the share. Please attach the screenshot below, or fill in the details manually."
-        );
+        // Only show "nothing came through" when the user arrived
+        // expecting a share to have worked — a plain visit via "Import
+        // Screenshot" (no ?shared= at all) is the normal manual-entry
+        // path and isn't an error.
+        if (shared) {
+          setShareNotice(
+            "Nothing came through from the share. Please attach the screenshot below, or fill in the details manually."
+          );
+        }
         return;
       }
 
@@ -160,10 +172,17 @@ function ImportTransactionInner() {
         await runOcr(draft.file);
       }
 
-      if (draft.text) {
+      // Some apps share a "title" and/or a "url" alongside (or instead
+      // of) plain text — e.g. a deep link to a receipt. Fold whatever is
+      // present into one block so the parser can scan all of it, and so
+      // the user can see exactly what was shared even if nothing in it
+      // was recognizable.
+      const sharedText = [draft.title, draft.text, draft.url].filter(Boolean).join("\n");
+
+      if (sharedText) {
         setSource(draft.file ? "shared_image" : "shared_text");
-        setExtractedText((prev) => prev || draft.text);
-        applyParsed(parseTransactionText(draft.text));
+        setExtractedText((prev) => prev || sharedText);
+        applyParsed(parseTransactionText(sharedText));
       }
 
       await clearSharedDraft();
