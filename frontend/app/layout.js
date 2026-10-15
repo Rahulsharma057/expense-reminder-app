@@ -1,6 +1,7 @@
 
 import "./globals.css";
 import ToastProvider from "../components/ToastProvider";
+import ServiceWorkerRegistrar from "../components/ServiceWorkerRegistrar";
 
 export const metadata = {
   title: "Expenses & Reminders",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
+        <ServiceWorkerRegistrar />
         <ToastProvider />
         {children}
       </body>
